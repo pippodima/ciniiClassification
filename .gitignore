@@ -1,0 +1,42 @@
+# ── Generated / large data files ─────────────────────────────────────────────
+data/
+clustering_output/
+training_data/
+models/
+mappings/
+eda/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Environments ─────────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+*.DS_Store
+
+# ── Model / checkpoint artifacts ─────────────────────────────────────────────
+*.pt
+*.pkl
+*.npy
+*.mmap
+*.bin
+*.safetensors
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
