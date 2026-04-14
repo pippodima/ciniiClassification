@@ -2,9 +2,15 @@
 data/
 clustering_output/
 training_data/
-models/
 mappings/
 eda/
+
+# models/ — only models/release/ is tracked; all other experiment folders ignored
+models/v1/
+models/v2/
+
+# Classification output (generated on server)
+classified/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
@@ -40,3 +46,7 @@ env/
 
 # ── Logs ─────────────────────────────────────────────────────────────────────
 *.log
+
+# ── Release model (must be last — last matching rule wins) ───────────────────
+!models/release/
+!models/release/**
