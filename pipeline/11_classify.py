@@ -99,8 +99,8 @@ def load_artefacts(model_dir: Path, model_choice: str, device: str):
     with open(model_dir / "hierarchy.pkl", "rb") as f:
         hier = pickle.load(f)
 
-    le_div: "LabelEncoder" = encoders["div"]
-    le_sub: "LabelEncoder" = encoders["sub"]
+    le_div: "LabelEncoder" = encoders["le_div"]
+    le_sub: "LabelEncoder" = encoders["le_sub"]
     n_div = len(le_div.classes_)
     n_sub = len(le_sub.classes_)
 
