@@ -43,7 +43,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import MODEL_DIR
+from config import MODELS_DIR as MODEL_DIR
 
 
 # ─────────────────────────────────────────────────────────────────────────────
