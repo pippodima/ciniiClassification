@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -66,15 +67,39 @@ LCC_NAMES: dict[str, str] = {
 
 TFIDF_SAMPLE = 3_000   # max docs per class for TF-IDF (keeps it fast at 3M scale)
 
+# Document-structure words that add no topical signal in TF-IDF (but are kept
+# in embeddings where they provide semantic context).
+_BOILERPLATE: frozenset[str] = frozenset({
+    "abstract", "article", "paper", "study", "results", "result",
+    "using", "used", "use", "based", "method", "methods", "data",
+    "research", "analysis", "also", "new", "present", "show", "shown",
+    "propose", "proposed", "approach", "work", "works", "effect",
+    "effects", "different", "two", "three", "high", "low", "large",
+    "significantly", "significant",
+})
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(text: str) -> str:
+    return _HTML_TAG_RE.sub("", str(text)).strip()
+
+
+def _is_latin(text: str) -> bool:
+    """True if the string contains only ASCII + common punctuation (no CJK etc.)."""
+    return bool(re.fullmatch(r"[\x00-\x7FÀ-ɏ\s\-\.\,\(\)\[\]\{\}\/\:\;\'\"\!\?\+\=\*\&\%\#\@\$\°\~\^]+", str(text).strip()))
+
 
 # ─── TF-IDF helper ───────────────────────────────────────────────────────────
 
 def _top_terms(texts: pd.Series, top_n: int) -> list[str]:
     if len(texts) < 3:
         return ["(too few documents)"]
+    from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+    stop = ENGLISH_STOP_WORDS.union(_BOILERPLATE)
     vec = TfidfVectorizer(
         max_features=15_000,
-        stop_words="english",
+        stop_words=stop,
         ngram_range=(1, 2),
         min_df=2,
         sublinear_tf=True,
@@ -164,15 +189,20 @@ def build_report(df: pd.DataFrame, top_n: int, n_samples: int) -> str:
 
     # ── 6. Sample titles per main class ──────────────────────────────────────
     if "title" in df.columns:
-        section(f"{n_samples} SAMPLE TITLES PER MAIN CLASS")
+        section(f"{n_samples} SAMPLE TITLES PER MAIN CLASS  (Latin script only; HTML stripped)")
         for cls in sorted(df["pred_lcc_main"].unique()):
             name = LCC_NAMES.get(cls, "")
             pool = df.loc[df["pred_lcc_main"] == cls, "title"].dropna()
-            sample = pool.sample(min(n_samples, len(pool)), random_state=42).tolist()
+            # Prefer Latin-script titles; fall back to all if too few
+            latin_pool = pool[pool.apply(_is_latin)]
+            draw_pool  = latin_pool if len(latin_pool) >= n_samples else pool
+            sample = draw_pool.sample(min(n_samples, len(draw_pool)), random_state=42).tolist()
             line()
             line(f"  [{cls}] {name}")
             for t in sample:
-                line(f"    • {str(t)[:120]}")
+                clean = _strip_html(t)[:120]
+                flag  = "  [non-Latin]" if not _is_latin(t) else ""
+                line(f"    • {clean}{flag}")
 
     # ── 7. Low-confidence examples ────────────────────────────────────────────
     low = df[df["conf_div"] < 0.30].head(10)
@@ -182,7 +212,7 @@ def build_report(df: pd.DataFrame, top_n: int, n_samples: int) -> str:
             label = f"[{row.get('pred_lcc_main','')}→{row.get('pred_lcc','')}→{row.get('pred_lcc_div','')}]"
             line(f"  conf={row['conf_div']:.3f}  {label}")
             if "title" in row and pd.notna(row.get("title")):
-                line(f"    {str(row['title'])[:120]}")
+                line(f"    {_strip_html(row['title'])[:120]}")
     else:
         section("LOW-CONFIDENCE EXAMPLES  (conf < 0.30)")
         line("  None — all documents classified with conf ≥ 0.30  ✅")
