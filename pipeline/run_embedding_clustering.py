@@ -43,21 +43,51 @@ def _save_chunked(df: pd.DataFrame, embeddings: np.ndarray, output_path: str, ch
     """
     Write df + embeddings to Parquet in chunks so the full embedding matrix
     never needs to live as Python objects in RAM simultaneously.
-    Safe for datasets of any size.
+
+    Atomic write: data goes to a .tmp file and is renamed to output_path only
+    on full success.  A crash during save leaves no partial output file, so
+    run_stage correctly detects the stage as incomplete on restart.
+
+    Schema coercion: Arrow infers type `null` for all-null columns in a chunk,
+    which conflicts with `string` in later chunks.  We promote null→string in
+    the file schema so every chunk can be safely cast.
     """
-    writer = None
-    n = len(df)
-    df_reset = df.reset_index(drop=True)
-    for start in range(0, n, chunk_size):
-        end = min(start + chunk_size, n)
-        chunk = df_reset.iloc[start:end].copy()
-        chunk["embeddings"] = [embeddings[i].tolist() for i in range(start, end)]
-        table = pa.Table.from_pandas(chunk, preserve_index=False)
-        if writer is None:
-            writer = pq.ParquetWriter(output_path, table.schema, compression="snappy")
-        writer.write_table(table)
-    if writer:
-        writer.close()
+    from pathlib import Path
+    out     = Path(output_path)
+    tmp     = out.with_suffix(".tmp.parquet")
+    n       = len(df)
+    df_rest = df.reset_index(drop=True)
+    writer  = None
+    schema  = None
+
+    try:
+        for start in range(0, n, chunk_size):
+            end   = min(start + chunk_size, n)
+            chunk = df_rest.iloc[start:end].copy()
+            chunk["embeddings"] = [embeddings[i].tolist() for i in range(start, end)]
+            table = pa.Table.from_pandas(chunk, preserve_index=False)
+
+            if writer is None:
+                # Promote null-typed fields → string so all chunks share one schema
+                fields = [
+                    pa.field(f.name, pa.string() if f.type == pa.null() else f.type)
+                    for f in table.schema
+                ]
+                schema = pa.schema(fields)
+                writer = pq.ParquetWriter(str(tmp), schema, compression="snappy")
+
+            writer.write_table(table.cast(schema, safe=False))
+
+    except Exception:
+        if writer:
+            writer.close()
+        if tmp.exists():
+            tmp.unlink()
+        raise
+
+    writer.close()
+    import os
+    os.replace(tmp, out)   # atomic: output_path is absent or complete, never partial
     print(f"  ✅ Saved {n:,} rows → {output_path}")
 
 
