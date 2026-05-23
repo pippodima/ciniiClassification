@@ -113,16 +113,18 @@ def preflight(p: dict, raw_dir: Path, device: str, do_classify: bool) -> None:
     def chk(label: str, ok: bool, note: str = "") -> None:
         print(f"  {'✓' if ok else '✗'}  {label:<44} {note}")
 
-    # 1. RAW_DIR
-    rdf_count = len(list(raw_dir.glob("**/*.rdf"))) if raw_dir.exists() else 0
-    chk("RAW_DIR exists + .rdf files", raw_dir.exists() and rdf_count > 0,
-        f"{rdf_count:,} files")
+    # 1. RAW_DIR — use next() to stop at the first match; never walks the full tree
+    has_rdf = (raw_dir.exists() and
+               next(raw_dir.glob("**/*.rdf"), None) is not None)
+    n_subdirs = len([d for d in raw_dir.iterdir() if d.is_dir()]) if raw_dir.exists() else 0
+    chk("RAW_DIR exists + .rdf files", raw_dir.exists() and has_rdf,
+        f"{n_subdirs:,} subdirs" if has_rdf else "not found or empty")
     if not raw_dir.exists():
         errors.append(
             f"RAW_DIR not found: {raw_dir}\n"
             "  Fix: export RAW_DIR=/path/to/your/rdf/files"
         )
-    elif rdf_count == 0:
+    elif not has_rdf:
         errors.append(f"No .rdf files found under {raw_dir}")
 
     # 2. Required packages
