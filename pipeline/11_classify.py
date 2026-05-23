@@ -109,10 +109,12 @@ def load_artefacts(model_dir: Path, model_choice: str, device: str):
 
     if model_choice == "a":
         model = ModelA(n_div=n_div)
-        state = torch.load(model_dir / "model_a_flat.pt", map_location=device)
+        state = torch.load(model_dir / "model_a_flat.pt", map_location=device,
+                           weights_only=True)
     else:
         model = ModelB(n_div=n_div, n_sub=n_sub)
-        state = torch.load(model_dir / "model_b_twohead.pt", map_location=device)
+        state = torch.load(model_dir / "model_b_twohead.pt", map_location=device,
+                           weights_only=True)
 
     model.load_state_dict(state)
     model.to(device)
@@ -138,10 +140,6 @@ def predict_batch(model, embs_np: np.ndarray, hier_mask: torch.Tensor,
 
     if model_choice == "a":
         lg_div = model(x)                            # (N, n_div)
-        lg_sub_agg = torch.zeros(
-            x.shape[0], hier_mask.shape[0],
-            device=device
-        )
         # subclass = whichever subclass contains the winning division
         div_idx = lg_div.argmax(1)
         # for each sample, find which subclass owns the predicted division
@@ -218,7 +216,8 @@ def main():
     total_rows = pf.metadata.num_rows
     print(f"\nClassifying {total_rows:,} rows in chunks of {args.chunk_size}...")
 
-    writer = None
+    writer       = None
+    file_schema  = None
     n_classified = 0
 
     for batch in tqdm(pf.iter_batches(batch_size=args.chunk_size),
@@ -255,10 +254,19 @@ def main():
         chunk = chunk.drop(columns=["embeddings"], errors="ignore")
 
         table = pa.Table.from_pandas(chunk, preserve_index=False)
-        if writer is None:
-            writer = pq.ParquetWriter(str(out_path), table.schema, compression="snappy")
-        writer.write_table(table)
 
+        if writer is None:
+            # Promote null-typed fields → string so all chunks share one stable schema.
+            # Columns like language/doi/error can be all-null in some chunks, causing
+            # Arrow to infer type null which conflicts with string in other chunks.
+            fields = [
+                pa.field(f.name, pa.string() if f.type == pa.null() else f.type)
+                for f in table.schema
+            ]
+            file_schema = pa.schema(fields)
+            writer = pq.ParquetWriter(str(out_path), file_schema, compression="snappy")
+
+        writer.write_table(table.cast(file_schema, safe=False))
         n_classified += len(chunk)
 
     if writer:
