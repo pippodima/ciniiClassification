@@ -105,7 +105,7 @@ def load_artefacts(model_dir: Path, model_choice: str, device: str):
     n_sub = len(le_sub.classes_)
 
     # hier_mask: bool tensor (n_sub, n_div) — True where division belongs to subclass
-    hier_mask: torch.Tensor = hier["mask"].to(device)   # already bool
+    hier_mask: torch.Tensor = hier["hier_mask"].to(device)   # already bool
 
     if model_choice == "a":
         model = ModelA(n_div=n_div)
