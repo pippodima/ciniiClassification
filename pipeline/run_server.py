@@ -474,11 +474,13 @@ def main() -> None:
         print(f"\n{'─'*62}")
         print(f"  STAGE [REPORT]")
         print(f"{'─'*62}")
-        run_stage("report",
-                  [sys.executable, str(PIPELINE / "12_report_classification.py"),
-                   "--classified", str(p["classified"]),
-                   "--output",     str(report_out)],
-                  env, report_out, force=True)   # always re-generate
+        from config import LCC_MAPPING_V2
+        report_cmd = [sys.executable, str(PIPELINE / "12_report_classification.py"),
+                      "--classified", str(p["classified"]),
+                      "--output",     str(report_out)]
+        if LCC_MAPPING_V2.exists():
+            report_cmd += ["--lcc-mapping", str(LCC_MAPPING_V2)]
+        run_stage("report", report_cmd, env, report_out, force=True)   # always re-generate
 
     # ── Final summary ──────────────────────────────────────────────────────────
     print(f"\n{'='*62}")

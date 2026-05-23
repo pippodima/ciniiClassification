@@ -49,8 +49,9 @@ MERGE_TOPICS_JSON = MERGE_DIR / "cluster_output_merged_topics.json"
 MERGE_PREFIX      = str(MERGE_DIR / "cluster_output")
 
 # ── Training data ─────────────────────────────────────────────────────────────
-TRAINING_DIR = ROOT / "training_data"
-LABELED_26K  = TRAINING_DIR / "labeled_26k.parquet"
+TRAINING_DIR    = ROOT / "training_data"
+LABELED_26K     = TRAINING_DIR / "labeled_26k.parquet"
+LCC_MAPPING_V2  = CLUSTER_DIR / "v2" / "lcc_mapping_full.parquet"
 
 # ── Mappings ──────────────────────────────────────────────────────────────────
 MAPPINGS_DIR = ROOT / "mappings"

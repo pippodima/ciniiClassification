@@ -205,7 +205,7 @@ def build_report(df: pd.DataFrame, top_n: int, n_samples: int) -> str:
                 line(f"    • {clean}{flag}")
 
     # ── 7. Low-confidence examples ────────────────────────────────────────────
-    low = df[df["conf_div"] < 0.30].head(10)
+    low = df[df["conf_div"] < 0.30].sort_values("conf_div").head(10)
     if len(low) > 0:
         section(f"LOW-CONFIDENCE EXAMPLES  (conf < 0.30, up to 10 shown)")
         for _, row in low.iterrows():
@@ -218,6 +218,72 @@ def build_report(df: pd.DataFrame, top_n: int, n_samples: int) -> str:
         line("  None — all documents classified with conf ≥ 0.30  ✅")
 
     line()
+    return "\n".join(out)
+
+
+# ─── Cluster training-data overview ──────────────────────────────────────────
+
+def build_cluster_section(lcc_path: Path) -> str:
+    """
+    Read lcc_mapping_full.parquet and return a formatted string showing
+    how many clusters were used for training, their names, and distribution.
+    """
+    out: list[str] = []
+
+    def line(s: str = ""):
+        out.append(s)
+
+    def section(title: str):
+        line()
+        line("=" * 64)
+        line(f"  {title}")
+        line("=" * 64)
+
+    lcc = pd.read_parquet(lcc_path)
+    total_clusters = len(lcc)
+    valid = lcc[~lcc["lcc_division"].isin(["UNKNOWN", "MISSING"])]
+    dropped = lcc[lcc["lcc_division"].isin(["UNKNOWN", "MISSING"])]
+    total_papers = valid["n_papers"].sum()
+
+    conf_counts = lcc["div_confidence"].value_counts()
+
+    section("TRAINING DATA — CLUSTER OVERVIEW")
+    line(f"  Total clusters produced by HDBSCAN : {total_clusters}")
+    line(f"  Dropped (JATS noise / unassignable): {len(dropped)}")
+    line(f"  Clusters used for training          : {len(valid)}")
+    line(f"  Papers in training clusters         : {total_papers:,}")
+    line()
+    line(f"  LCC assignment confidence:")
+    line(f"    H (High)   : {conf_counts.get('H', 0)}")
+    line(f"    M (Medium) : {conf_counts.get('M', 0)}")
+    line(f"    L (Low)    : {conf_counts.get('L', 0)}")
+    if len(dropped):
+        line()
+        line("  Dropped clusters:")
+        for _, r in dropped.iterrows():
+            line(f"    cluster {r['cluster_id']:>3}  [{r['div_confidence']}]  {r['label']}")
+
+    # Per main-class summary
+    section("TRAINING CLUSTERS PER LCC MAIN CLASS")
+    line(f"  {'Cls':<6}  {'LCC Topic':<38}  {'Clusters':>8}  {'Papers':>8}")
+    line(f"  {'─'*6}  {'─'*38}  {'─'*8}  {'─'*8}")
+    grp = (valid.groupby("lcc_main")
+                .agg(n_clusters=("cluster_id", "count"),
+                     n_papers=("n_papers", "sum"))
+                .sort_values("n_papers", ascending=False))
+    for cls, row in grp.iterrows():
+        name = LCC_NAMES.get(cls, cls)
+        line(f"  {cls:<6}  {name:<38}  {row['n_clusters']:>8}  {row['n_papers']:>8,}")
+
+    # Full cluster list
+    section("ALL TRAINING CLUSTERS  (sorted by paper count)")
+    line(f"  {'ID':>4}  {'Conf'}  {'LCC':<10}  {'Papers':>6}  Label")
+    line(f"  {'─'*4}  {'─'*4}  {'─'*10}  {'─'*6}  {'─'*40}")
+    for _, r in valid.sort_values("n_papers", ascending=False).iterrows():
+        label_short = str(r["label"])[:55]
+        line(f"  {r['cluster_id']:>4}  [{r['div_confidence']}]  "
+             f"{r['lcc_division']:<10}  {r['n_papers']:>6,}  {label_short}")
+
     return "\n".join(out)
 
 
@@ -236,6 +302,8 @@ def main() -> None:
                         help="TF-IDF terms per main class (default: 15)")
     parser.add_argument("--samples",    type=int, default=3,
                         help="Sample titles per main class (default: 3)")
+    parser.add_argument("--lcc-mapping", default=None,
+                        help="Path to lcc_mapping_full.parquet — adds cluster training overview")
     args = parser.parse_args()
 
     path = Path(args.classified)
@@ -247,13 +315,22 @@ def main() -> None:
     df = pd.read_parquet(path)
     print(f"  {len(df):,} rows  —  columns: {list(df.columns)}\n")
 
+    cluster_section = ""
+    if args.lcc_mapping:
+        lcc_path = Path(args.lcc_mapping)
+        if not lcc_path.exists():
+            print(f"  ⚠  lcc-mapping file not found: {lcc_path}", file=sys.stderr)
+        else:
+            cluster_section = build_cluster_section(lcc_path)
+
     report = build_report(df, top_n=args.top_words, n_samples=args.samples)
-    print(report)
+    full_report = cluster_section + "\n" + report if cluster_section else report
+    print(full_report)
 
     if args.output:
         out = Path(args.output)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(report, encoding="utf-8")
+        out.write_text(full_report, encoding="utf-8")
         print(f"\nReport saved → {out}")
 
 
