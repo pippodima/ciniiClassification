@@ -96,7 +96,7 @@ def _top_terms(texts: pd.Series, top_n: int) -> list[str]:
     if len(texts) < 3:
         return ["(too few documents)"]
     from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-    stop = ENGLISH_STOP_WORDS.union(_BOILERPLATE)
+    stop = list(ENGLISH_STOP_WORDS.union(_BOILERPLATE))
     vec = TfidfVectorizer(
         max_features=15_000,
         stop_words=stop,
