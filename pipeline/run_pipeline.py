@@ -24,7 +24,7 @@ Path convention for --run-name NAME:
     data/processed/rdf_parsed_NAME.parquet
     data/cleaned/english_NAME.parquet
     data/cleaned/other_languages_NAME.parquet
-    data/embedded/NAME/embedded_26k.parquet
+    data/embedded/NAME/embedded.parquet
     data/embedded/NAME/checkpoints/
 
 If --run-name is omitted the original default paths are used (may overwrite).
@@ -57,7 +57,7 @@ def _build_paths(run_name: str | None) -> dict:
             "english_output": str(CLEANED_DIR   / f"english_{n}.parquet"),
             "other_output":   str(CLEANED_DIR   / f"other_languages_{n}.parquet"),
             "embed_dir":      str(EMBEDDED_DIR  / n),
-            "embed_file":     str(EMBEDDED_DIR  / n / "embedded_26k.parquet"),
+            "embed_file":     str(EMBEDDED_DIR  / n / "embedded.parquet"),
         }
     else:
         return {
@@ -65,7 +65,7 @@ def _build_paths(run_name: str | None) -> dict:
             "english_output": str(ENGLISH),
             "other_output":   str(OTHER_LANGS),
             "embed_dir":      str(EMBEDDED_DIR),
-            "embed_file":     str(EMBEDDED_DIR / "embedded_26k.parquet"),
+            "embed_file":     str(EMBEDDED_DIR / "embedded.parquet"),
         }
 
 

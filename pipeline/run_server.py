@@ -26,7 +26,7 @@ Usage:
 Output paths (all tagged with --run-name so nothing is overwritten):
     data/processed/rdf_parsed_<name>.parquet
     data/cleaned/english_<name>.parquet
-    data/embedded/<name>/embedded_26k.parquet
+    data/embedded/<name>/embedded.parquet
     classified/classified_<name>.parquet
     logs/run_<name>_<timestamp>.log
 """
@@ -93,7 +93,7 @@ def _paths(run_name: str) -> dict[str, Path]:
         "english":       CLEANED_DIR   / f"english_{n}.parquet",
         "other":         CLEANED_DIR   / f"other_languages_{n}.parquet",
         "embed_dir":     EMBEDDED_DIR  / n,
-        "embed":         EMBEDDED_DIR  / n / "embedded_26k.parquet",
+        "embed":         EMBEDDED_DIR  / n / "embedded.parquet",
         "classified":    ROOT / "classified" / f"classified_{n}.parquet",
         "model_dir":     MODELS_DIR / "release",
     }
@@ -359,6 +359,8 @@ def main() -> None:
                         help="Force re-run of one stage even if output already exists.")
     parser.add_argument("--skip-classify", action="store_true",
                         help="Skip the classify step (run parse→clean→embed only).")
+    parser.add_argument("--skip-report",  action="store_true",
+                        help="Skip the post-classification quality report.")
     parser.add_argument("--max-docs",      type=int, default=None,
                         help="Cap raw docs to parse (for testing; default: all).")
     parser.add_argument("--batch-size",    type=int,
@@ -374,7 +376,8 @@ def main() -> None:
     raw_dir = Path(os.getenv("RAW_DIR", str(_CFG_RAW_DIR)))
     device  = os.getenv("DEVICE", "cpu")
     save_n  = int(os.getenv("SAVE_EVERY_N_BATCHES", "50"))
-    do_cls  = not args.skip_classify
+    do_cls    = not args.skip_classify
+    do_report = not args.skip_report
 
     # ── Log file: tees all orchestrator print() calls ─────────────────────────
     log_path = (ROOT / "logs" /
@@ -395,6 +398,9 @@ def main() -> None:
     if do_cls:
         print(f"  [04] classify : {p['classified']}")
         print(f"  model_dir     : {p['model_dir']}")
+    if do_cls and do_report:
+        report_out = ROOT / "reports" / f"report_{args.run_name}.txt"
+        print(f"  [05] report   : {report_out}")
     print(f"  log           : {log_path}")
     print(f"{'='*62}")
 
@@ -459,6 +465,18 @@ def main() -> None:
                        "--device",    device],
                       env, p["classified"], force=(args.force_stage == "classify"))
         n4 = report_classified(p["classified"])
+
+    # ── Stage 05: Quality report ───────────────────────────────────────────────
+    if do_cls and do_report and p["classified"].exists():
+        report_out = ROOT / "reports" / f"report_{args.run_name}.txt"
+        print(f"\n{'─'*62}")
+        print(f"  STAGE [REPORT]")
+        print(f"{'─'*62}")
+        run_stage("report",
+                  [sys.executable, str(PIPELINE / "12_report_classification.py"),
+                   "--classified", str(p["classified"]),
+                   "--output",     str(report_out)],
+                  env, report_out, force=True)   # always re-generate
 
     # ── Final summary ──────────────────────────────────────────────────────────
     print(f"\n{'='*62}")

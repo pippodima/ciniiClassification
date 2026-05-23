@@ -8,12 +8,12 @@ so the embedding matrix is never fully loaded into RAM.
 Usage:
     # Model B (two-head, recommended) on server embeddings
     python pipeline/11_classify.py \
-        --input  data/embedded/server/embedded_26k.parquet \
+        --input  data/embedded/server/embedded.parquet \
         --output data/classified/classified_server.parquet
 
     # Model A (flat, faster)
     python pipeline/11_classify.py --model a \
-        --input  data/embedded/server/embedded_26k.parquet \
+        --input  data/embedded/server/embedded.parquet \
         --output data/classified/classified_server_modela.parquet
 
     # Adjust chunk size if RAM is tight (default 5000 rows per chunk)

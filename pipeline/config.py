@@ -24,7 +24,8 @@ EMBEDDED_DIR  = ROOT / "data" / "embedded"
 RDF_PARSED  = PROCESSED_DIR / "rdf_parsed.parquet"
 ENGLISH     = CLEANED_DIR   / "english.parquet"
 OTHER_LANGS = CLEANED_DIR   / "other_languages.parquet"
-EMBEDDED_26K = EMBEDDED_DIR / "embedded_26k.parquet"
+EMBEDDED_FILE = EMBEDDED_DIR / "embedded.parquet"
+EMBEDDED_26K  = EMBEDDED_FILE   # legacy alias
 
 # ── Clustering output ────────────────────────────────────────────────────────
 CLUSTER_DIR       = ROOT / "clustering_output"

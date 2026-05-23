@@ -139,7 +139,7 @@ def main():
         embeddings = embeddings.astype(np.float32, copy=False)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    output_path = os.path.join(OUTPUT_DIR, "embedded_26k.parquet")
+    output_path = os.path.join(OUTPUT_DIR, "embedded.parquet")
 
     print("💾 Saving outputs (chunked write — scalable)...")
     _save_chunked(df, embeddings, output_path, chunk_size=2000)
