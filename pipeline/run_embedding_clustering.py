@@ -80,8 +80,11 @@ def main():
     print("📥 Loading data...")
     df = load_df(INPUT_PATH)
 
-    print("🧹 Cleaning text...")
-    df = apply_clean_text_to_df(df)
+    if "clean_abstract" not in df.columns:
+        print("🧹 Cleaning text...")
+        df = apply_clean_text_to_df(df)
+    else:
+        print("🧹 clean_abstract already present — skipping re-clean.")
 
     print("🧠 Loading embedding model...")
     model = getModel(device=DEVICE, modelName=MODEL_NAME)
