@@ -94,7 +94,15 @@ class ModelB(nn.Module):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_artefacts(model_dir: Path, model_choice: str, device: str):
-    with open(model_dir / "label_encoders.pkl", "rb") as f:
+    # Support both naming conventions: new (encoders.pkl) and legacy (label_encoders.pkl)
+    enc_file = next(
+        (model_dir / n for n in ["encoders.pkl", "label_encoders.pkl"]
+         if (model_dir / n).exists()),
+        None,
+    )
+    if enc_file is None:
+        raise FileNotFoundError(f"Encoder file not found in {model_dir}")
+    with open(enc_file, "rb") as f:
         encoders = pickle.load(f)
     with open(model_dir / "hierarchy.pkl", "rb") as f:
         hier = pickle.load(f)
@@ -109,12 +117,25 @@ def load_artefacts(model_dir: Path, model_choice: str, device: str):
 
     if model_choice == "a":
         model = ModelA(n_div=n_div)
-        state = torch.load(model_dir / "model_a_flat.pt", map_location=device,
-                           weights_only=True)
+        # Support both naming conventions: new (model_a.pt) and legacy (model_a_flat.pt)
+        pt = next(
+            (model_dir / n for n in ["model_a.pt", "model_a_flat.pt"]
+             if (model_dir / n).exists()),
+            None,
+        )
+        if pt is None:
+            raise FileNotFoundError(f"Model A weights not found in {model_dir}")
+        state = torch.load(pt, map_location=device, weights_only=True)
     else:
         model = ModelB(n_div=n_div, n_sub=n_sub)
-        state = torch.load(model_dir / "model_b_twohead.pt", map_location=device,
-                           weights_only=True)
+        pt = next(
+            (model_dir / n for n in ["model_b.pt", "model_b_twohead.pt"]
+             if (model_dir / n).exists()),
+            None,
+        )
+        if pt is None:
+            raise FileNotFoundError(f"Model B weights not found in {model_dir}")
+        state = torch.load(pt, map_location=device, weights_only=True)
 
     model.load_state_dict(state)
     model.to(device)

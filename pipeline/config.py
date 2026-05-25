@@ -53,6 +53,9 @@ TRAINING_DIR    = ROOT / "training_data"
 LABELED_26K     = TRAINING_DIR / "labeled_26k.parquet"
 LCC_MAPPING_V2  = CLUSTER_DIR / "v2" / "lcc_mapping_full.parquet"
 
+# ── Training runs (new pipeline) ──────────────────────────────────────────────
+RUNS_DIR        = ROOT / "training_runs"
+
 # ── Mappings ──────────────────────────────────────────────────────────────────
 MAPPINGS_DIR = ROOT / "mappings"
 LCC_MAP      = MAPPINGS_DIR / "lcc_map.json"
