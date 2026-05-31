@@ -375,17 +375,28 @@ def repair_batch_parquet_files(output_folder: str) -> None:
 
 def merge_batch_parquet_files(batch_files: List[str], final_output: str) -> None:
     """
-    Merge parquet batches safely by casting each batch to TARGET_SCHEMA, then concatenating.
-    (This avoids the pyarrow.dataset schema unification edge cases.)
+    Streaming merge: write one batch at a time so RAM stays at one-batch peak
+    regardless of total corpus size.  Each batch is cast to TARGET_SCHEMA before
+    writing so the output schema is guaranteed stable.
     """
-    tables = []
-    for f in batch_files:
-        t = pq.read_table(f)
-        t = cast_table_to_schema(t, TARGET_SCHEMA)
-        tables.append(t)
-
-    merged = pa.concat_tables(tables, promote=True)
-    pq.write_table(merged, final_output)
+    tmp = final_output + ".tmp.parquet"
+    writer = None
+    try:
+        for f in batch_files:
+            t = pq.read_table(f)
+            t = cast_table_to_schema(t, TARGET_SCHEMA)
+            if writer is None:
+                writer = pq.ParquetWriter(tmp, TARGET_SCHEMA, compression="snappy")
+            writer.write_table(t)
+    except Exception:
+        if writer:
+            writer.close()
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+    if writer:
+        writer.close()
+    os.replace(tmp, final_output)   # atomic: output is absent or complete, never partial
 
 
 def cleanup_temporary_files(batch_files: List[str], checkpoint_file: str) -> None:
@@ -440,9 +451,17 @@ def select_sample_files(rdf_files: List[str], max_docs: Optional[int], random_st
     return random.sample(rdf_files, max_docs)
 
 
-def process_batch(batch_files: List[str], output_file: str, checkpoint_file: str, batch_number: int) -> None:
-    """Process a single batch of RDF files."""
-    results = [parse_rdf(f) for f in batch_files]
+def process_batch(batch_files: List[str], output_file: str, checkpoint_file: str,
+                  batch_number: int, workers: int = 1) -> None:
+    """Process a single batch of RDF files, optionally in parallel."""
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            # chunksize reduces IPC overhead: each worker gets 200 files per round-trip
+            results = list(executor.map(parse_rdf, batch_files, chunksize=200))
+    else:
+        results = [parse_rdf(f) for f in batch_files]
+
     df = pd.DataFrame(results)
 
     # Force stable schema across batches (prevents 'null' Arrow columns)
@@ -460,6 +479,7 @@ def process_rdf_folder_batches(
     batch_size: int = 1000,
     max_docs: Optional[int] = None,
     output_folder: str = "processed",
+    workers: int = 1,
 ) -> None:
     """Process RDF files recursively in batches with crash recovery."""
     os.makedirs(output_folder, exist_ok=True)
@@ -471,7 +491,8 @@ def process_rdf_folder_batches(
     rdf_files = select_sample_files(rdf_files, max_docs)
 
     total_files = len(rdf_files)
-    print(f"Found {total_files} files. Processing in batches of {batch_size}...")
+    print(f"Found {total_files} files. Processing in batches of {batch_size} "
+          f"using {workers} worker(s)...")
 
     batch_number = 1
     for i in range(0, total_files, batch_size):
@@ -482,7 +503,7 @@ def process_rdf_folder_batches(
 
         batch_files = rdf_files[i:i + batch_size]
         output_file = os.path.join(output_folder, f"rdf_results_batch_{batch_number}.parquet")
-        process_batch(batch_files, output_file, checkpoint_file, batch_number)
+        process_batch(batch_files, output_file, checkpoint_file, batch_number, workers=workers)
         batch_number += 1
 
     # Allow caller (or env var) to override the final merged file path
@@ -545,6 +566,16 @@ def main():
         default=str(PROCESSED_DIR),
         help="Output folder for processed files",
     )
+    parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel worker processes for parsing (default: 1). "
+             "Set to the number of CPU cores, e.g. --workers 16. "
+             "Each worker parses files independently — data is identical to "
+             "single-worker output, just faster.",
+    )
     args = parser.parse_args()
 
     process_rdf_folder_batches(
@@ -552,6 +583,7 @@ def main():
         batch_size=args.batch_size,
         max_docs=args.max_document,
         output_folder=args.output_folder,
+        workers=args.workers,
     )
 
 

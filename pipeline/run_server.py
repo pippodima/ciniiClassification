@@ -368,6 +368,10 @@ def main() -> None:
     parser.add_argument("--batch-size",    type=int,
                         default=int(os.getenv("BATCH_SIZE", "64")),
                         help="Embedding batch size (default: $BATCH_SIZE or 64).")
+    parser.add_argument("--parse-workers", type=int,
+                        default=int(os.getenv("PARSE_WORKERS", "1")),
+                        help="Parallel workers for RDF parsing (default: 1). "
+                             "Set to CPU core count for large datasets, e.g. --parse-workers 16.")
     parser.add_argument("--dry-run",       action="store_true",
                         help="Preflight + path check only — no processing.")
     parser.add_argument("--report-only",   action="store_true",
@@ -433,7 +437,8 @@ def main() -> None:
     # ── Stage 01: Parse RDF ────────────────────────────────────────────────────
     if not args.report_only:
         cmd = [sys.executable, str(PIPELINE / "01_parse_rdf.py"),
-               "-o", str(p["parse_batches"])]
+               "-o", str(p["parse_batches"]),
+               "--workers", str(args.parse_workers)]
         if args.max_docs:
             cmd += ["--max-document", str(args.max_docs)]
         run_stage("parse", cmd, env, p["parsed"], force=(args.force_stage == "parse"))
