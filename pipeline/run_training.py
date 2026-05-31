@@ -5,16 +5,23 @@ Crashproof retraining pipeline: sample → embed → cluster → [manual LCC] �
 
 Stages
 ------
-  1. sample   — Draw N documents from the cleaned English parquet
+  1. sample   — Draw N documents from any parquet (cleaned text OR pre-embedded)
   2. embed    — Generate Qwen3 embeddings (checkpointed, fully resumable)
+               SKIPPED AUTOMATICALLY if --source already has an embeddings column
   3. cluster  — UMAP + HDBSCAN with silhouette auto-tuning; output lcc_mapping.csv
   [PAUSE]     — Fill in lcc_subclass + lcc_division columns in lcc_mapping.csv
   4. train    — Validate mapping, build training dataset, train Model A & B
 
 Usage
 -----
-    # New run — runs stages 1-3 then pauses for LCC mapping
+    # From cleaned text parquet (will embed the sample)
     python pipeline/run_training.py --run-name v3 --sample-size 50000
+
+    # From run_server embedded output (SKIPS re-embedding — fastest path)
+    python pipeline/run_training.py --run-name v3 \
+        --source data/embedded/FullDataset/embedded.parquet \
+        --sample-size 150000 \
+        --suggest-lcc models/release
 
     # Resume after filling in lcc_mapping.csv
     python pipeline/run_training.py --run-name v3 --train
@@ -160,23 +167,103 @@ def _load_module(filename: str):
 # STAGE 1 — SAMPLE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def stage_sample(run_dir: Path, sample_size: int, seed: int = 42) -> int:
-    out = run_dir / "sample.parquet"
-    _log(f"  Source  : {ENGLISH}")
+def _sample_parquet_chunked(source: Path, k: int, seed: int) -> pd.DataFrame:
+    """
+    Memory-efficient random sampling from a large parquet.
+    Reads row indices without loading embeddings, then fetches only the
+    selected rows in chunks — never loads the full file into RAM.
+    """
+    rng = np.random.default_rng(seed)
 
-    if not ENGLISH.exists():
-        raise FileNotFoundError(f"Cleaned English parquet not found: {ENGLISH}")
+    # Pass 1: read schema to get total row count and column list
+    pf     = pq.ParquetFile(source)
+    n_rows = pf.metadata.num_rows
+    schema_names = pf.schema_arrow.names
 
-    df = pd.read_parquet(ENGLISH)
-    n  = len(df)
-    k  = min(sample_size, n)
-    _log(f"  Pool    : {n:,} documents")
+    if n_rows <= k:
+        # Source is smaller than requested sample — just read everything
+        return pd.read_parquet(source)
+
+    # Sample row indices (sorted for sequential chunk reads)
+    chosen = np.sort(rng.choice(n_rows, size=k, replace=False))
+    chosen_set = set(chosen.tolist())
+
+    # Pass 2: stream through file keeping only chosen rows
+    rows: list[pd.DataFrame] = []
+    global_i = 0
+    for batch in pf.iter_batches(batch_size=20_000):
+        chunk   = batch.to_pandas()
+        n_chunk = len(chunk)
+        local   = [i for i in range(n_chunk) if (global_i + i) in chosen_set]
+        if local:
+            rows.append(chunk.iloc[local].copy())
+        global_i += n_chunk
+        # Early exit once we have all chosen rows
+        if global_i > chosen.max():
+            break
+
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
+
+def stage_sample(run_dir: Path, source: Path, sample_size: int,
+                 seed: int = 42) -> tuple[int, bool]:
+    """
+    Returns (n_sampled, has_embeddings).
+    If has_embeddings is True, the sample is written to embedded.parquet
+    and the embed stage is auto-skipped.
+
+    Source can be:
+      - A directory produced by run_reembed.py (sharded, has manifest.json)
+      - A single parquet file with an 'embeddings' column
+      - A single parquet file without embeddings (text only)
+    """
+    _log(f"  Source  : {source}")
+
+    if not source.exists():
+        raise FileNotFoundError(f"Source not found: {source}")
+
+    # ── Sharded directory from run_reembed.py ─────────────────────────────────
+    if source.is_dir():
+        from run_reembed import sample_from_shards
+        manifest = json.loads((source / "manifest.json").read_text())
+        n_total  = manifest["n_docs"]
+        k        = min(sample_size, n_total)
+        _log(f"  Mode    : sharded directory  ({manifest['n_shards']} shards)")
+        _log(f"  Pool    : {n_total:,} documents")
+        _log(f"  Sample  : {k:,} documents  (seed={seed})")
+        _log("  → embed stage will be skipped (embeddings already computed)")
+
+        sample = sample_from_shards(source, k, seed)
+
+        text_cols = [c for c in sample.columns if c != "embeddings"]
+        _atomic_parquet(sample[text_cols], run_dir / "sample.parquet")
+        _atomic_parquet(sample,            run_dir / "embedded.parquet")
+        _log(f"  ✅ sample.parquet + embedded.parquet → {run_dir}")
+        return k, True
+
+    # ── Single parquet file ───────────────────────────────────────────────────
+    schema_names   = pq.ParquetFile(source).schema_arrow.names
+    has_embeddings = "embeddings" in schema_names
+    n_rows         = pq.ParquetFile(source).metadata.num_rows
+    k              = min(sample_size, n_rows)
+
+    _log(f"  Mode    : single parquet")
+    _log(f"  Pool    : {n_rows:,} documents")
     _log(f"  Sample  : {k:,} documents  (seed={seed})")
+    if has_embeddings:
+        _log("  → embed stage will be skipped (source has embeddings column)")
 
-    sample = df.sample(k, random_state=seed).reset_index(drop=True)
-    _atomic_parquet(sample, out)
-    _log(f"  ✅ Saved → {out}")
-    return k
+    sample = _sample_parquet_chunked(source, k, seed)
+
+    text_cols = [c for c in sample.columns if c != "embeddings"]
+    _atomic_parquet(sample[text_cols], run_dir / "sample.parquet")
+    _log(f"  ✅ sample.parquet → {run_dir / 'sample.parquet'}")
+
+    if has_embeddings:
+        _atomic_parquet(sample, run_dir / "embedded.parquet")
+        _log(f"  ✅ embedded.parquet → {run_dir / 'embedded.parquet'}")
+
+    return k, has_embeddings
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -873,6 +960,11 @@ def main():
     )
     parser.add_argument("--run-name",    required=True,
                         help="Identifier for this training run (e.g. v3, 50k_v2)")
+    parser.add_argument("--source",      default=None, metavar="PATH",
+                        help="Source parquet or sharded embedding directory. "
+                             "Defaults to the cleaned English parquet from config. "
+                             "If the source has an 'embeddings' column the embed "
+                             "stage is skipped automatically.")
     parser.add_argument("--sample-size", type=int, default=50_000,
                         help="Documents to sample for clustering (default: 50000)")
     parser.add_argument("--skip",        nargs="*", default=[],
@@ -909,10 +1001,12 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
 
     suggest_dir = Path(args.suggest_lcc) if args.suggest_lcc else None
+    source      = Path(args.source) if args.source else ENGLISH
 
     _section(f"TRAINING PIPELINE  run={args.run_name}  {datetime.now():%Y-%m-%d %H:%M}")
     _log(f"  Run dir   : {run_dir}")
     _log(f"  Model dir : {model_dir}")
+    _log(f"  Source    : {source}")
     _log(f"  Sample    : {args.sample_size:,}  device={args.device}")
     if suggest_dir:
         _log(f"  LCC hint  : {suggest_dir}")
@@ -939,8 +1033,12 @@ def main():
     # ── Stage 1: Sample ───────────────────────────────────────────────────────
     _section("STAGE 1 — SAMPLE")
     if _should_run("sample"):
-        k = stage_sample(run_dir, args.sample_size, args.seed)
+        k, has_emb = stage_sample(run_dir, source, args.sample_size, args.seed)
         _save_state(run_dir, "sample", {"n_docs": k})
+        if has_emb:
+            # Source had embeddings — write them as embedded.parquet and skip embed
+            _save_state(run_dir, "embed", {"n_docs": k, "skipped": "source had embeddings"})
+            _log("  ⏭  embed stage auto-skipped (source already had embeddings)")
 
     # ── Stage 2: Embed ────────────────────────────────────────────────────────
     _section("STAGE 2 — EMBED")
