@@ -359,6 +359,9 @@ def main() -> None:
     parser.add_argument("--force-stage",   choices=["parse", "clean", "embed", "classify"],
                         default=None,
                         help="Force re-run of one stage even if output already exists.")
+    parser.add_argument("--skip-embed",    action="store_true",
+                        help="Skip the embed stage (run parse+clean only). "
+                             "Use when you will embed separately with run_reembed.py.")
     parser.add_argument("--skip-classify", action="store_true",
                         help="Skip the classify step (run parse→clean→embed only).")
     parser.add_argument("--skip-report",  action="store_true",
@@ -382,7 +385,8 @@ def main() -> None:
     raw_dir = Path(os.getenv("RAW_DIR", str(_CFG_RAW_DIR)))
     device  = os.getenv("DEVICE", "cpu")
     save_n  = int(os.getenv("SAVE_EVERY_N_BATCHES", "50"))
-    do_cls    = not args.skip_classify
+    do_embed  = not args.skip_embed
+    do_cls    = not args.skip_classify and do_embed
     do_report = not args.skip_report
 
     # ── Log file: tees all orchestrator print() calls ─────────────────────────
@@ -452,11 +456,11 @@ def main() -> None:
     n2 = report_cleaned(p["english"])
 
     # ── Stage 03: Generate embeddings ──────────────────────────────────────────
-    if not args.report_only:
+    if do_embed and not args.report_only:
         run_stage("embed",
                   [sys.executable, str(PIPELINE / "run_embedding_clustering.py")],
                   env, p["embed"], force=(args.force_stage == "embed"))
-    n3 = report_embedded(p["embed"])
+    n3 = report_embedded(p["embed"]) if p["embed"].exists() else 0
 
     # ── Stage 04: Classify ─────────────────────────────────────────────────────
     n4 = 0
