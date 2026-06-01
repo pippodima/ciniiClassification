@@ -56,20 +56,53 @@ def detect_language(text: str) -> str:
     except LangDetectException:
         return None
 
+_CJK_RE = re.compile(
+    r"[぀-ゟ"   # Hiragana
+    r"゠-ヿ"    # Katakana
+    r"一-鿿"    # CJK Unified Ideographs (kanji / hanzi)
+    r"㐀-䶿]"   # CJK Extension A
+)
+
+
+def _cjk_ratio(text: str) -> float:
+    """Fraction of characters that are CJK/Japanese."""
+    if not text:
+        return 0.0
+    return len(_CJK_RE.findall(text)) / len(text)
+
+
 def keep_only_english(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Keep rows where the resolved language is English.
-    Uses `abstract_lang` (publisher-declared or langdetect fallback).
+    """
+    Keep rows where the resolved language is English AND the abstract
+    contains fewer than 5% CJK characters.
+
+    The CJK check catches papers where the publisher declared dc:language="en"
+    but the abstract is actually written in Japanese — those slip through the
+    langdetect fallback because Tier 1 (publisher tag) is trusted unconditionally.
     """
     print("Keeping only English papers")
     before = len(df)
 
-    mask_en = df["abstract_lang"] == "en"
+    abs_col = "clean_abstract" if "clean_abstract" in df.columns else "abstract"
 
-    df_en = df[mask_en].copy()
+    # Tier 1: publisher / langdetect language label
+    mask_lang = df["abstract_lang"] == "en"
+
+    # Tier 2: CJK character ratio guard — catches Japanese abstracts labelled "en"
+    cjk_ratios = df[abs_col].fillna("").apply(_cjk_ratio)
+    mask_cjk   = cjk_ratios < 0.05   # less than 5% CJK chars → treat as English
+
+    mask_en = mask_lang & mask_cjk
+    n_cjk_rejected = int((mask_lang & ~mask_cjk).sum())
+
+    df_en    = df[mask_en].copy()
     df_other = df[~mask_en].copy()
 
     after = len(df_en)
     print(f"  Kept {after:,} / {before:,} rows ({after / before:.1%})")
+    if n_cjk_rejected:
+        print(f"  CJK-ratio filter removed {n_cjk_rejected:,} additional rows "
+              f"(declared 'en' but ≥5% CJK characters — Japanese leakage)")
 
     return df_en, df_other
 
