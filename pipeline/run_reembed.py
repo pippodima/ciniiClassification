@@ -206,6 +206,7 @@ def run_reembed(
     batch_size: int,
     model_name: str,
     shard_size: int,
+    max_length: int = 512,
     dry_run:    bool = False,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -240,6 +241,10 @@ def run_reembed(
     _proc  = _load_module("02_process_text.py")
 
     model = _embed.getModel(device=device, modelName=model_name)
+    # Cap sequence length so attention (O(L²)) doesn't OOM on long abstracts.
+    # 512 tokens covers >99% of scientific abstracts; Qwen3 default is 32768.
+    model.max_seq_length = max_length
+    _log(f"  Max tokens   : {max_length}  (tokenizer truncation)")
     query = (
         "Given a scientific paper title and abstract, "
         "produce an embedding that captures the research topic."
@@ -388,6 +393,10 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32,
                         help="Embedding batch size per GPU pass (default: 32). "
                              "Reduce to 8–16 if CUDA OOM.")
+    parser.add_argument("--max-length", type=int, default=512,
+                        help="Max tokens per document (default: 512). "
+                             "Qwen3 supports 32768 but 512 covers >99%% of abstracts "
+                             "and dramatically reduces VRAM. Lower this if OOM persists.")
     parser.add_argument("--shard-size", type=int, default=50_000,
                         help="Rows per shard parquet file (default: 50000 ≈ 200 MB)")
     parser.add_argument("--model-name", default="Qwen/Qwen3-Embedding-0.6B",
@@ -402,6 +411,7 @@ def main():
     _log(f"  Source     : {args.source}")
     _log(f"  Output     : {out_dir}")
     _log(f"  Device     : {args.device}  batch={args.batch_size}")
+    _log(f"  Max tokens : {args.max_length}")
     _log(f"  Shard size : {args.shard_size:,}")
     _log(f"  Model      : {args.model_name}")
 
@@ -412,6 +422,7 @@ def main():
         batch_size = args.batch_size,
         model_name = args.model_name,
         shard_size = args.shard_size,
+        max_length = args.max_length,
         dry_run    = args.dry_run,
     )
 
