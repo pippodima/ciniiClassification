@@ -348,6 +348,106 @@ def plot_subclass_top20(df: pd.DataFrame, out: Path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RANDOM EXAMPLE SAMPLER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_JATS_RE      = re.compile(r"<jats:", re.IGNORECASE)
+_XML_TAG_RE   = re.compile(r"<[a-zA-Z/][^>]{0,60}>")
+_NON_ASCII_RE = re.compile(r"[^\x00-\x7F]")
+
+
+def _format_example(i: int, row: pd.Series, abs_col: str) -> list[str]:
+    title    = str(row.get("title", "")) or "(no title)"
+    abstract = str(row.get(abs_col, "")) or "(no abstract)"
+    lines = [
+        f"  [{i}] ─────────────────────────────────────────────────",
+        f"  TITLE   : {title[:200]}",
+        f"  ABSTRACT: {abstract[:400]}{'…' if len(abstract) > 400 else ''}",
+    ]
+    flags = []
+    if _JATS_RE.search(abstract):          flags.append("JATS TAG")
+    if _XML_TAG_RE.search(abstract):       flags.append("XML/HTML TAG")
+    if _wordcount(abstract) < 20:          flags.append("VERY SHORT (<20w)")
+    na = len(_NON_ASCII_RE.findall(abstract))
+    if na > 5:                             flags.append(f"NON-ASCII chars ({na})")
+    if flags:
+        lines.append(f"  ⚠ FLAGS : {' | '.join(flags)}")
+    return lines
+
+
+def _sample_examples(df: pd.DataFrame, n: int = 10, seed: int = 42) -> list[str]:
+    """
+    Return formatted text blocks for:
+      - n random documents
+      - up to n/2 documents with very short abstracts  (< 20 words)
+      - up to n/2 documents with suspected JATS / XML tags
+      - up to n/2 documents with many non-ASCII characters
+    """
+    abs_col = "clean_abstract" if "clean_abstract" in df.columns else "abstract"
+    if abs_col not in df.columns:
+        return ["  (no abstract column found)"]
+
+    rng   = np.random.default_rng(seed)
+    lines = []
+
+    def _header(title):
+        lines.append("")
+        lines.append(f"  {'─'*58}")
+        lines.append(f"  {title}")
+        lines.append(f"  {'─'*58}")
+
+    # ── 1. Random sample ─────────────────────────────────────────────────────
+    _header(f"RANDOM EXAMPLES  (n={n})")
+    idx = rng.choice(len(df), size=min(n, len(df)), replace=False)
+    for i, row_idx in enumerate(idx, 1):
+        lines.extend(_format_example(i, df.iloc[int(row_idx)], abs_col))
+
+    # ── 2. Very short abstracts ───────────────────────────────────────────────
+    short_mask = df[abs_col].dropna().apply(_wordcount) < 20
+    short_df   = df.loc[short_mask[short_mask].index]
+    k = min(n // 2, len(short_df))
+    if k:
+        _header(f"SHORT ABSTRACT EXAMPLES  (<20 words, showing {k})")
+        idx2 = rng.choice(len(short_df), size=k, replace=False)
+        for i, row_idx in enumerate(idx2, 1):
+            lines.extend(_format_example(i, short_df.iloc[int(row_idx)], abs_col))
+    else:
+        _header("SHORT ABSTRACT EXAMPLES  (<20 words)")
+        lines.append("  none found ✅")
+
+    # ── 3. JATS / XML tag survivors ───────────────────────────────────────────
+    jats_mask = df[abs_col].dropna().apply(
+        lambda t: bool(_JATS_RE.search(str(t)) or _XML_TAG_RE.search(str(t)))
+    )
+    jats_df = df.loc[jats_mask[jats_mask].index]
+    k = min(n // 2, len(jats_df))
+    if k:
+        _header(f"JATS / XML TAG SURVIVORS  (showing {k} of {len(jats_df):,})")
+        idx3 = rng.choice(len(jats_df), size=k, replace=False)
+        for i, row_idx in enumerate(idx3, 1):
+            lines.extend(_format_example(i, jats_df.iloc[int(row_idx)], abs_col))
+    else:
+        _header("JATS / XML TAG SURVIVORS")
+        lines.append("  none found ✅")
+
+    # ── 4. High non-ASCII (possible Japanese / garbled text) ─────────────────
+    def _na_count(t): return len(_NON_ASCII_RE.findall(str(t)))
+    na_mask = df[abs_col].dropna().apply(_na_count) > 10
+    na_df   = df.loc[na_mask[na_mask].index]
+    k = min(n // 2, len(na_df))
+    if k:
+        _header(f"HIGH NON-ASCII EXAMPLES  (>10 non-ASCII chars, showing {k} of {len(na_df):,})")
+        idx4 = rng.choice(len(na_df), size=k, replace=False)
+        for i, row_idx in enumerate(idx4, 1):
+            lines.extend(_format_example(i, na_df.iloc[int(row_idx)], abs_col))
+    else:
+        _header("HIGH NON-ASCII EXAMPLES")
+        lines.append("  none found ✅")
+
+    return lines
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # TEXT SUMMARY
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -446,6 +546,14 @@ def text_summary(df: pd.DataFrame, out: Path, source: Path):
         L(f"  < 0.30 : {(c<0.30).sum():,}  ({(c<0.30).mean():.1%})")
         L()
 
+    # Random examples — the most direct quality check
+    L("=" * 62)
+    L("  DOCUMENT EXAMPLES")
+    L("=" * 62)
+    for example_line in _sample_examples(df, n=10):
+        L(example_line)
+    L()
+
     L("=" * 62)
 
     report = "\n".join(lines)
@@ -509,8 +617,7 @@ def main():
                "publishers", n=args.top_n)
     plot_top_n(df, "journal",   out, "05_top_journals.png",
                "journals",   n=args.top_n)
-    plot_language(df, out)
-    plot_doc_type(df, out)
+    # language + doc_type plots omitted: data is already filtered to English scientific papers
 
     if has_classification:
         plot_lcc_distribution(df, out)
