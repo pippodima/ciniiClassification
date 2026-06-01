@@ -89,33 +89,57 @@ def _extract_year(s):
 
 
 def _load(source: Path, sample: int | None) -> pd.DataFrame:
-    pf    = pq.ParquetFile(source)
-    n     = pf.metadata.num_rows
-    cols  = pf.schema_arrow.names
-    # never load the embeddings column for exploration
-    keep  = [c for c in cols if c != "embeddings"]
-    print(f"  {n:,} rows  —  {len(cols)} columns")
+    pf   = pq.ParquetFile(source)
+    meta = pf.metadata
+    n    = meta.num_rows
+    n_rg = meta.num_row_groups
+    cols = pf.schema_arrow.names
+    keep = [c for c in cols if c != "embeddings"]
+
+    print(f"  {n:,} rows  —  {len(cols)} columns  —  {n_rg} row groups")
     if "embeddings" in cols:
         print("  (embeddings column excluded from load)")
+
+    def _read_rg(rg_idx: int) -> pd.DataFrame | None:
+        """Read one row group; return None if it is corrupted."""
+        try:
+            return pf.read_row_group(rg_idx, columns=keep).to_pandas()
+        except Exception as e:
+            print(f"  ⚠  row group {rg_idx} skipped (corrupted): {e}")
+            return None
 
     if sample and sample < n:
         print(f"  Sampling {sample:,} rows for speed ...")
         rng    = np.random.default_rng(42)
         chosen = np.sort(rng.choice(n, size=sample, replace=False))
-        chosen_set = set(chosen.tolist())
+
         rows, gi = [], 0
-        for batch in pf.iter_batches(batch_size=50_000, columns=keep):
-            chunk  = batch.to_pandas()
-            nc     = len(chunk)
-            local  = [i for i in range(nc) if (gi + i) in chosen_set]
-            if local:
-                rows.append(chunk.iloc[local])
-            gi += nc
-            if gi > chosen.max():
+        for rg_idx in range(n_rg):
+            rg_rows = meta.row_group(rg_idx).num_rows
+            rg_end  = gi + rg_rows
+
+            # binary search: does any chosen row fall in [gi, rg_end)?
+            lo = int(np.searchsorted(chosen, gi))
+            hi = int(np.searchsorted(chosen, rg_end))
+            if lo < hi:
+                chunk = _read_rg(rg_idx)
+                if chunk is not None:
+                    local = chosen[lo:hi] - gi   # local row indices in this chunk
+                    rows.append(chunk.iloc[local])
+
+            gi = rg_end
+            if gi > chosen[-1]:
                 break
-        df = pd.concat(rows, ignore_index=True)
+
+        df = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
     else:
-        df = pd.read_parquet(source, columns=keep)
+        rows = []
+        for rg_idx in range(n_rg):
+            chunk = _read_rg(rg_idx)
+            if chunk is not None:
+                rows.append(chunk)
+        df = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
     print(f"  Loaded {len(df):,} rows")
     return df
