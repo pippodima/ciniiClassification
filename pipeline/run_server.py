@@ -270,21 +270,33 @@ def _header(label: str, path: Path) -> None:
     print(f"  {'─'*55}")
 
 
+def _stream_parquet(path: Path, columns: list[str], chunk: int = 500_000):
+    """Yield DataFrame chunks from a parquet file without loading it all into RAM."""
+    pf = pq.ParquetFile(path)
+    avail = [c for c in columns if c in pf.schema_arrow.names]
+    for batch in pf.iter_batches(batch_size=chunk, columns=avail):
+        yield batch.to_pandas()
+
+
 def report_parsed(path: Path) -> int:
     _header("01 PARSE", path)
     if not path.exists():
         print("  ❌  Output not found!")
         return 0
-    df = pd.read_parquet(path)
-    n        = len(df)
-    errors   = int(df["error"].notna().sum()) if "error" in df.columns else "?"
-    has_abs  = int(df["abstract"].notna().sum()) if "abstract" in df.columns else n
-    lang_cov = int(df["language"].notna().sum()) if "language" in df.columns else "?"
-    jats     = int(df["abstract"].str.contains("<jats:", na=False).sum()) if "abstract" in df.columns else "?"
+    pf = pq.ParquetFile(path)
+    n = pf.metadata.num_rows
+    cols = pf.schema_arrow.names
+    errors = has_abs = lang_cov = jats = 0
+    for chunk in _stream_parquet(path, ["title", "abstract", "language", "error"]):
+        if "error"    in chunk: errors   += int(chunk["error"].notna().sum())
+        if "abstract" in chunk: has_abs  += int(chunk["abstract"].notna().sum())
+        if "language" in chunk: lang_cov += int(chunk["language"].notna().sum())
+        if "abstract" in chunk:
+            jats += int(chunk["abstract"].str.contains("<jats:", na=False).sum())
     print(f"  Total rows      : {n:,}")
-    print(f"  Parse errors    : {errors}")
+    print(f"  Parse errors    : {errors:,}")
     print(f"  Has abstract    : {has_abs:,}  ({has_abs/max(n,1):.1%})")
-    print(f"  dc:language     : {lang_cov} rows with publisher-declared language")
+    print(f"  dc:language     : {lang_cov:,} rows with publisher-declared language")
     print(f"  JATS in abstract: {jats}  {'← ✅' if jats == 0 else '← ⚠️  should be 0!'}")
     return n
 
@@ -294,16 +306,22 @@ def report_cleaned(path: Path) -> int:
     if not path.exists():
         print("  ❌  Output not found!")
         return 0
-    df    = pd.read_parquet(path)
-    n     = len(df)
-    jats  = (int(df["clean_abstract"].str.contains("<jats:", na=False).sum())
-             if "clean_abstract" in df.columns else "?")
-    langs = (df["abstract_lang"].value_counts().head(5).to_dict()
-             if "abstract_lang" in df.columns else {})
+    pf   = pq.ParquetFile(path)
+    n    = pf.metadata.num_rows
+    jats = 0
+    lang_counts: dict = {}
+    cols_avail = pf.schema_arrow.names
+    for chunk in _stream_parquet(path, ["clean_abstract", "abstract_lang"]):
+        if "clean_abstract" in chunk:
+            jats += int(chunk["clean_abstract"].str.contains("<jats:", na=False).sum())
+        if "abstract_lang" in chunk:
+            for val, cnt in chunk["abstract_lang"].value_counts().items():
+                lang_counts[val] = lang_counts.get(val, 0) + int(cnt)
+    top5 = dict(sorted(lang_counts.items(), key=lambda x: -x[1])[:5])
     print(f"  Rows (EN sci.)  : {n:,}")
     print(f"  JATS in clean   : {jats}  {'← ✅' if jats == 0 else '← ⚠️  should be 0!'}")
-    print(f"  Lang dist (top5): {langs}")
-    print(f"  Columns         : {list(df.columns)}")
+    print(f"  Lang dist (top5): {top5}")
+    print(f"  Columns         : {cols_avail}")
     return n
 
 
@@ -341,19 +359,30 @@ def report_classified(path: Path) -> int:
     if not path.exists():
         print("  ❌  Output not found!")
         return 0
-    df = pd.read_parquet(path, columns=["pred_lcc_main", "pred_lcc", "conf_div"])
-    n  = len(df)
+    pf = pq.ParquetFile(path)
+    n  = pf.metadata.num_rows
+    cls_counts: dict = {}
+    conf_sum = conf_sq = low30 = low50 = 0
+    for chunk in _stream_parquet(path, ["pred_lcc_main", "conf_div"]):
+        if "pred_lcc_main" in chunk:
+            for val, cnt in chunk["pred_lcc_main"].value_counts().items():
+                cls_counts[val] = cls_counts.get(val, 0) + int(cnt)
+        if "conf_div" in chunk:
+            c = chunk["conf_div"].dropna()
+            conf_sum += float(c.sum())
+            low30    += int((c < 0.30).sum())
+            low50    += int((c < 0.50).sum())
+    top = sorted(cls_counts.items(), key=lambda x: -x[1])
+    mean_conf = conf_sum / max(n, 1)
     print(f"  Classified      : {n:,}")
     print(f"  Top LCC classes :")
-    for cls, cnt in df["pred_lcc_main"].value_counts().head(8).items():
+    for cls, cnt in top[:8]:
         print(f"    {cls:<4}  {cnt:>10,}  ({cnt/n:.1%})")
-    m, med = df["conf_div"].mean(), df["conf_div"].median()
-    low30  = (df["conf_div"] < 0.30).mean()
-    low50  = (df["conf_div"] < 0.50).mean()
-    print(f"  conf_div        : mean={m:.3f}  median={med:.3f}")
-    print(f"  conf < 0.30     : {low30:.1%}  "
-          f"{'← ⚠️  high — consider re-training on server data' if low30 > 0.25 else '← ✅ ok'}")
-    print(f"  conf < 0.50     : {low50:.1%}")
+    print(f"  conf_div mean   : {mean_conf:.3f}")
+    lr30 = low30 / max(n, 1)
+    print(f"  conf < 0.30     : {lr30:.1%}  "
+          f"{'← ⚠️  high — consider re-training' if lr30 > 0.25 else '← ✅ ok'}")
+    print(f"  conf < 0.50     : {low50/max(n,1):.1%}")
     return n
 
 
