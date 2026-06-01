@@ -103,7 +103,8 @@ def _paths(run_name: str) -> dict[str, Path]:
 # Pre-flight checks — fail fast with actionable messages
 # ─────────────────────────────────────────────────────────────────────────────
 
-def preflight(p: dict, raw_dir: Path, device: str, do_classify: bool) -> None:
+def preflight(p: dict, raw_dir: Path, device: str, do_classify: bool,
+              skip_parse: bool = False) -> None:
     print(f"\n{'='*62}")
     print("  PRE-FLIGHT CHECKS")
     print(f"{'='*62}")
@@ -113,19 +114,30 @@ def preflight(p: dict, raw_dir: Path, device: str, do_classify: bool) -> None:
     def chk(label: str, ok: bool, note: str = "") -> None:
         print(f"  {'✓' if ok else '✗'}  {label:<44} {note}")
 
-    # 1. RAW_DIR — use next() to stop at the first match; never walks the full tree
-    has_rdf = (raw_dir.exists() and
-               next(raw_dir.glob("**/*.rdf"), None) is not None)
-    n_subdirs = len([d for d in raw_dir.iterdir() if d.is_dir()]) if raw_dir.exists() else 0
-    chk("RAW_DIR exists + .rdf files", raw_dir.exists() and has_rdf,
-        f"{n_subdirs:,} subdirs" if has_rdf else "not found or empty")
-    if not raw_dir.exists():
-        errors.append(
-            f"RAW_DIR not found: {raw_dir}\n"
-            "  Fix: export RAW_DIR=/path/to/your/rdf/files"
-        )
-    elif not has_rdf:
-        errors.append(f"No .rdf files found under {raw_dir}")
+    # 1. RAW_DIR — only required when the parse stage will actually run
+    if skip_parse:
+        parsed_exists = p["parsed"].exists()
+        chk("RAW_DIR check skipped (parse already done)",
+            parsed_exists,
+            str(p["parsed"]) if parsed_exists else "parsed parquet missing!")
+        if not parsed_exists:
+            errors.append(
+                f"Parsed parquet not found: {p['parsed']}\n"
+                "  Re-run without --force-stage clean (parse stage must run first)"
+            )
+    else:
+        has_rdf = (raw_dir.exists() and
+                   next(raw_dir.glob("**/*.rdf"), None) is not None)
+        n_subdirs = len([d for d in raw_dir.iterdir() if d.is_dir()]) if raw_dir.exists() else 0
+        chk("RAW_DIR exists + .rdf files", raw_dir.exists() and has_rdf,
+            f"{n_subdirs:,} subdirs" if has_rdf else "not found or empty")
+        if not raw_dir.exists():
+            errors.append(
+                f"RAW_DIR not found: {raw_dir}\n"
+                "  Fix: export RAW_DIR=/path/to/your/rdf/files"
+            )
+        elif not has_rdf:
+            errors.append(f"No .rdf files found under {raw_dir}")
 
     # 2. Required packages
     required_pkgs = [
@@ -415,7 +427,9 @@ def main() -> None:
     print(f"{'='*62}")
 
     # ── Pre-flight ────────────────────────────────────────────────────────────
-    preflight(p, raw_dir, device, do_cls)
+    # Parse is effectively skipped when its output already exists and not force-rerun
+    parse_will_run = (args.force_stage == "parse") or not p["parsed"].exists()
+    preflight(p, raw_dir, device, do_cls, skip_parse=not parse_will_run)
 
     if args.dry_run:
         print("  Dry-run — stopping here (no data was processed).")
