@@ -353,7 +353,7 @@ def plot_subclass_top20(df: pd.DataFrame, out: Path):
 
 def text_summary(df: pd.DataFrame, out: Path, source: Path):
     lines = []
-    L = lines.append
+    L = lambda s="": lines.append(s)
 
     L("=" * 62)
     L(f"  DATA EXPLORATION SUMMARY")
