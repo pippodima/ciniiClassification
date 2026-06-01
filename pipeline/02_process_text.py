@@ -392,10 +392,21 @@ def main():
     _english_out   = os.getenv("ENGLISH_OUTPUT", str(ENGLISH))
     _other_out     = os.getenv("OTHER_OUTPUT",   str(OTHER_LANGS))
 
-    df = load_df(_parsed_input)
-    n_parsed = len(df)
-    print(f"  Loaded: {n_parsed:,} rows")
+    # Push the "title AND abstract must be non-null" filter down into the parquet
+    # reader so we never load the 48M empty rows into RAM at all.
+    # 71.5M total → 23.1M with both fields → saves ~30 GB of pandas RAM.
+    import pyarrow.dataset as _ds
+    print("  Pre-filtering: dropping rows without title or abstract at read time...")
+    _dataset = _ds.dataset(_parsed_input, format="parquet")
+    _filt    = (_ds.field("title").is_valid() &
+                _ds.field("abstract").is_valid() &
+                (_ds.field("title")    != "") &
+                (_ds.field("abstract") != ""))
+    n_parsed = _ds.dataset(_parsed_input, format="parquet").count_rows()
+    df = _dataset.to_table(filter=_filt).to_pandas()
+    print(f"  Loaded: {len(df):,} rows  (pre-filtered from {n_parsed:,} total)")
 
+    # drop_empty_rows is now a no-op but kept for safety
     df = drop_empty_rows(df)
     print(f"  After drop_empty     : {len(df):,}  (dropped {n_parsed - len(df):,})")
 
