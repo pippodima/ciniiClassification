@@ -125,8 +125,21 @@ def _load(source: Path, sample: int | None) -> pd.DataFrame:
 # PLOT FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _missing_rate(df: pd.DataFrame) -> pd.Series:
+    """Per-column missing/empty rate — safe for list-typed columns."""
+    rates = {}
+    for col in df.columns:
+        na = df[col].isna()
+        try:
+            empty = df[col] == ""
+            rates[col] = (na | empty).mean()
+        except (ValueError, TypeError):
+            rates[col] = na.mean()   # list columns: only count NaN
+    return pd.Series(rates)
+
+
 def plot_missing(df: pd.DataFrame, out: Path):
-    miss = (df.isna() | (df == "")).mean().sort_values(ascending=False)
+    miss = _missing_rate(df).sort_values(ascending=False)
     miss = miss[miss > 0]
     if miss.empty:
         print("  no missing values — skipping missing-values chart")
@@ -327,7 +340,7 @@ def text_summary(df: pd.DataFrame, out: Path, source: Path):
     L()
 
     # Missing values
-    miss = (df.isna() | (df == "")).mean()
+    miss = _missing_rate(df)
     miss = miss[miss > 0].sort_values(ascending=False)
     if not miss.empty:
         L("  MISSING / EMPTY VALUES")
