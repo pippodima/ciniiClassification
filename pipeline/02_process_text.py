@@ -392,21 +392,37 @@ def main():
     _english_out   = os.getenv("ENGLISH_OUTPUT", str(ENGLISH))
     _other_out     = os.getenv("OTHER_OUTPUT",   str(OTHER_LANGS))
 
-    # Push the "title AND abstract must be non-null" filter down into the parquet
-    # reader so we never load the 48M empty rows into RAM at all.
-    # 71.5M total → 23.1M with both fields → saves ~30 GB of pandas RAM.
-    import pyarrow.dataset as _ds
-    print("  Pre-filtering: dropping rows without title or abstract at read time...")
-    _dataset = _ds.dataset(_parsed_input, format="parquet")
-    _filt    = (_ds.field("title").is_valid() &
-                _ds.field("abstract").is_valid() &
-                (_ds.field("title")    != "") &
-                (_ds.field("abstract") != ""))
-    n_parsed = _ds.dataset(_parsed_input, format="parquet").count_rows()
-    df = _dataset.to_table(filter=_filt).to_pandas()
-    print(f"  Loaded: {len(df):,} rows  (pre-filtered from {n_parsed:,} total)")
+    # Read in 500k-row batches, filtering empty rows per chunk.
+    # Benefits vs full load:
+    #   - Peak RAM = one batch (~2 GB) instead of full file (~40 GB)
+    #   - Corrupted-string batches are skipped individually instead of
+    #     crashing the whole load (some parquet rows have broken UTF-8).
+    import pyarrow.parquet as _pq
+    print("  Loading data (chunked, memory-safe)...")
+    _pf      = _pq.ParquetFile(_parsed_input)
+    n_parsed = _pf.metadata.num_rows
+    _chunks, _n_err = [], 0
 
-    # drop_empty_rows is now a no-op but kept for safety
+    for _batch in _pf.iter_batches(batch_size=500_000):
+        try:
+            _chunk = _batch.to_pandas()
+        except Exception as _e:
+            _n_err += _batch.num_rows
+            print(f"  ⚠  skipped {_batch.num_rows:,} rows (encoding error: {type(_e).__name__})")
+            continue
+        # filter empty title/abstract within this chunk
+        _chunk = _chunk.dropna(subset=["title", "abstract"])
+        _chunk = _chunk[(_chunk["title"].str.strip() != "") &
+                        (_chunk["abstract"].str.strip() != "")]
+        if len(_chunk):
+            _chunks.append(_chunk)
+
+    df = pd.concat(_chunks, ignore_index=True) if _chunks else pd.DataFrame()
+    print(f"  Loaded: {len(df):,} rows with title+abstract  "
+          f"(total={n_parsed:,}"
+          + (f"  encoding-errors={_n_err:,}" if _n_err else "") + ")")
+
+    # drop_empty_rows is now a no-op (already filtered above) but kept for safety
     df = drop_empty_rows(df)
     print(f"  After drop_empty     : {len(df):,}  (dropped {n_parsed - len(df):,})")
 
