@@ -251,6 +251,8 @@ def run_reembed(
     )
 
     # ── Stream through source, accumulate shards ───────────────────────────────
+    from tqdm import tqdm as _tqdm
+
     shard_id    = 0
     shard_buf_df:  list[pd.DataFrame] = []
     shard_buf_emb: list[np.ndarray]   = []
@@ -262,22 +264,24 @@ def run_reembed(
     ) if done_shards else 0
 
     t_start = time.time()
+    outer_batch = batch_size * 4   # rows read from parquet per iteration
 
-    for raw_batch in pf.iter_batches(batch_size=batch_size * 4):
+    pbar = _tqdm(
+        total   = n_total,
+        initial = total_done,
+        desc    = "Embedding",
+        unit    = "doc",
+        dynamic_ncols = True,
+    )
+
+    for raw_batch in pf.iter_batches(batch_size=outer_batch):
         chunk = raw_batch.to_pandas()
 
         # Clean text if needed
         if "clean_abstract" not in chunk.columns:
             chunk = _proc.apply_clean_text_to_df(chunk)
 
-        # Skip rows that belong to already-completed shards
-        # (we track by absolute row position via shard_id)
-        # Simpler: skip entire shards that are done
-        # We process shards sequentially so we just skip accumulated shards
-        # Actually: we re-process from the beginning but skip writing done shards.
-        # This is correct because we track shard_id and skip if shard_id in done_shards.
-
-        # Embed this batch
+        # Embed this batch — inner tqdm suppressed, outer bar tracks progress
         docs = _embed.get_title_and_abstract(
             chunk, title_col="title", abs_col="clean_abstract"
         )
@@ -287,9 +291,12 @@ def run_reembed(
             documents=docs,
             device=device,
             batch_size=batch_size,
+            show_progress=False,
         )
         if embs.dtype != np.float32:
             embs = embs.astype(np.float32, copy=False)
+
+        pbar.update(len(chunk))
 
         # Accumulate into shard buffer
         shard_buf_df.append(chunk.drop(columns=["embeddings"], errors="ignore"))
@@ -320,9 +327,9 @@ def run_reembed(
                 elapsed = time.time() - t_start
                 rate    = total_done / elapsed if elapsed > 0 else 0
                 eta     = (n_total - total_done) / rate if rate > 0 else float("inf")
-                _log(f"  ✅ shard {shard_id:05d}  "
-                     f"{total_done:>8,}/{n_total:,} docs  "
-                     f"{rate:,.0f} docs/s  ETA {eta/60:.1f} min")
+                pbar.write(f"  ✅ shard {shard_id:05d}  "
+                           f"{total_done:>8,}/{n_total:,}  "
+                           f"{rate:,.0f} doc/s  ETA {eta/60:.0f} min")
                 _save_manifest(out_dir, {
                     "n_docs":            total_done,
                     "n_shards":          len(done_shards),
@@ -345,7 +352,9 @@ def run_reembed(
             _write_shard(df_last, emb_last, shard_path)
             done_shards.add(shard_id)
             total_done += len(df_last)
-            _log(f"  ✅ shard {shard_id:05d}  (final, {len(df_last):,} rows)")
+            pbar.write(f"  ✅ shard {shard_id:05d}  (final, {len(df_last):,} rows)")
+
+    pbar.close()
 
     # ── Final manifest ────────────────────────────────────────────────────────
     _save_manifest(out_dir, {

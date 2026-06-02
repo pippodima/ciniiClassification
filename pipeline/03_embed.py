@@ -20,11 +20,13 @@ def get_title_and_abstract(df: pd.DataFrame, title_col="title_en", abs_col="abst
     return df["full_text"].tolist()
 
 
-def getEmbeddings(model, query, documents, device="cpu", batch_size=32):
+def getEmbeddings(model, query, documents, device="cpu", batch_size=32,
+                  show_progress=True):
     _ = model.encode(query, prompt_name="query", device=device)
 
     embeddings = []
-    for i in tqdm(range(0, len(documents), batch_size), desc="Embedding batches"):
+    for i in tqdm(range(0, len(documents), batch_size), desc="Embedding batches",
+                  disable=not show_progress):
         batch = documents[i:i + batch_size]
         batch_embs = model.encode(batch)
         embeddings.extend(batch_embs)
