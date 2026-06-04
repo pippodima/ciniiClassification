@@ -253,18 +253,21 @@ def run_reembed(
     # ── Stream through source, accumulate shards ───────────────────────────────
     from tqdm import tqdm as _tqdm
 
-    shard_id    = 0
+    # Shards are written sequentially: 0, 1, 2, ...
+    # The first n_done consecutive shards are complete; skip their rows entirely.
+    n_done_shards  = len(done_shards)
+    skip_rows      = n_done_shards * shard_size   # rows already embedded
+    shard_id       = n_done_shards                # next shard to write
     shard_buf_df:  list[pd.DataFrame] = []
     shard_buf_emb: list[np.ndarray]   = []
     shard_rows  = 0
-    total_done  = sum(
-        pq.ParquetFile(out_dir / SHARD_FMT.format(i)).metadata.num_rows
-        for i in done_shards
-        if (out_dir / SHARD_FMT.format(i)).exists()
-    ) if done_shards else 0
+    total_done  = skip_rows
+
+    if skip_rows:
+        _log(f"  Resuming from shard {shard_id} — skipping first {skip_rows:,} rows")
 
     t_start = time.time()
-    outer_batch = batch_size * 4   # rows read from parquet per iteration
+    outer_batch = max(batch_size * 8, 256)   # larger outer batch → better GPU utilisation
 
     pbar = _tqdm(
         total   = n_total,
@@ -274,7 +277,23 @@ def run_reembed(
         dynamic_ncols = True,
     )
 
+    global_row = 0
     for raw_batch in pf.iter_batches(batch_size=outer_batch):
+        n_raw = raw_batch.num_rows
+
+        # Fast-forward: skip rows that belong to already-completed shards
+        if global_row + n_raw <= skip_rows:
+            global_row += n_raw
+            pbar.update(n_raw)
+            continue
+
+        # Partial skip: batch straddles the resume boundary
+        if global_row < skip_rows:
+            offset = skip_rows - global_row
+            raw_batch = raw_batch.slice(offset)
+            global_row = skip_rows
+
+        global_row += raw_batch.num_rows
         chunk = raw_batch.to_pandas()
 
         # Clean text if needed
@@ -320,16 +339,15 @@ def run_reembed(
             shard_rows    = len(df_rem)
 
             shard_path = out_dir / SHARD_FMT.format(shard_id)
-            if shard_id not in done_shards:
-                _write_shard(df_shard, emb_shard, shard_path)
-                done_shards.add(shard_id)
-                total_done += shard_size
-                elapsed = time.time() - t_start
-                rate    = total_done / elapsed if elapsed > 0 else 0
-                eta     = (n_total - total_done) / rate if rate > 0 else float("inf")
-                pbar.write(f"  ✅ shard {shard_id:05d}  "
-                           f"{total_done:>8,}/{n_total:,}  "
-                           f"{rate:,.0f} doc/s  ETA {eta/60:.0f} min")
+            _write_shard(df_shard, emb_shard, shard_path)
+            done_shards.add(shard_id)
+            total_done += shard_size
+            elapsed = time.time() - t_start
+            rate    = total_done / elapsed if elapsed > 0 else 0
+            eta     = (n_total - total_done) / rate if rate > 0 else float("inf")
+            pbar.write(f"  ✅ shard {shard_id:05d}  "
+                       f"{total_done:>8,}/{n_total:,}  "
+                       f"{rate:,.0f} doc/s  ETA {eta/60:.0f} min")
                 _save_manifest(out_dir, {
                     "n_docs":            total_done,
                     "n_shards":          len(done_shards),
