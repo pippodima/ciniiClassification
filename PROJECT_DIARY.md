@@ -546,3 +546,344 @@ Model B kept as backup and for subclass-level confidence.
 
 **Next step:** Run inference on full 3M paper embeddings.
 
+---
+
+## Chapter 9 — Server Pipeline: First End-to-End Run (Sample)
+
+**Date:** 2026-05-25
+
+**Goal:** Build a single crashproof orchestration script for the server and test it on a
+sample of the full CiNii database before committing to the full 70M-document run.
+
+### New scripts created
+
+- **`pipeline/run_server.py`** — crashproof orchestrator covering parse → clean → embed →
+  classify → report. Auto-skips stages whose output already exists. Writes a log file. Has
+  `--force-stage`, `--skip-classify`, `--skip-embed`, `--dry-run` flags.
+- **`pipeline/12_report_classification.py`** — post-classification quality report. Generates:
+  overview stats, LCC distribution, top subclasses, TF-IDF top terms per class, sample titles,
+  low-confidence examples. Accepts `--lcc-mapping` to show cluster training overview.
+
+### Bugs discovered and fixed during first server run
+
+1. **`ImportError: cannot import name 'MODEL_DIR'`** — `config.py` exports `MODELS_DIR`
+   (plural). Fix: `from config import MODELS_DIR as MODEL_DIR` in `11_classify.py`.
+
+2. **`KeyError: 'div'`** — training saved `{"le_div":..., "le_sub":...}` but classify read
+   `encoders["div"]`. Fix: use `encoders["le_div"]`, `encoders["le_sub"]`.
+
+3. **`KeyError: 'mask'`** — training saved `{"hier_mask":...}` but classify read
+   `hier["mask"]`. Fix: `hier["hier_mask"]`.
+
+4. **Schema mismatch in classify output** — Arrow infers `null` type for all-null columns
+   (language, doi, error) in some chunks. Fix: promote null → string when establishing the
+   file schema, cast every chunk to it.
+
+5. **Partial file on crash** — failed write left a partial `.parquet` that `run_stage` saw as
+   complete and skipped. Fix: atomic write via `.tmp.parquet` + `os.replace()`.
+
+### First sample run results
+
+- Source: 500k raw RDF files from a subset of the CiNii dump
+- **35,456 English scientific papers** after clean stage
+- Classification with Model B (v2): completed in ~40 min total
+
+**Classification report — first sample run:**
+
+| LCC | Topic | Papers | % | Mean Conf |
+|-----|-------|--------|---|-----------|
+| T   | Technology | 14,896 | 42.0% | 0.919 |
+| Q   | Science | 14,575 | 41.1% | 0.932 |
+| R   | Medicine | 5,184 | 14.6% | 0.897 |
+| H   | Social Sciences | 539 | 1.5% | 1.000 |
+| L   | Education | 262 | 0.7% | 1.000 |
+
+- Mean confidence: **0.923** / Median: **0.998**
+- conf < 0.50: 3.2% / conf < 0.30: 0.2%
+- JATS in classified abstracts: **0** ✅
+
+**Key observations from this first run:**
+
+1. Only **5 of 21 LCC main classes** represented — expected, since training data only covered
+   T/Q/R/H/L (CiNii is STEM-heavy, and the 26k training sample reflected that).
+2. H and L have mean confidence = **1.000** — overconfidence flag. Model has never seen J, K,
+   G, D etc., so anything not STEM gets forced into H or L with fake certainty.
+3. Top TF-IDF terms are topically coherent for T/Q/R. Boilerplate words (abstract, paper,
+   study, results) polluted the word lists → fixed by adding custom stopword set.
+4. Japanese titles and abstracts still appeared in H class despite English-only filter —
+   publisher declares `dc:language="en"` but abstract is Japanese. Root cause: langdetect
+   fallback only runs when publisher tag is missing; if publisher says "en", we trust it.
+
+### Fixes applied to report quality
+
+- Added ~30 boilerplate stopwords to TF-IDF (abstract, paper, study, results, method, data…)
+- `_strip_html()` strips `<SUB>`, `<SUP>`, `<i>` from displayed titles (HTML subscript
+  characters common in chemistry/physics paper titles)
+- Sample title selector prefers Latin-script titles; non-Latin shown with `[non-Latin]` flag
+- `TfidfVectorizer` `stop_words` must be a `list`, not `frozenset` — fixed after server error
+
+---
+
+## Chapter 10 — Full CiNii Database Parse + Clean (FullDatasetV2)
+
+**Date:** 2026-06-01 to 2026-06-02
+
+### Parse stage
+
+**Command:**
+```bash
+RAW_DIR=/mnt/exssd3/.../data/raw \
+python pipeline/run_server.py \
+    --run-name FullDatasetV2 \
+    --parse-workers 12 \
+    --skip-embed \
+    --skip-classify
+```
+
+**Speedup applied:** `01_parse_rdf.py` updated to use `ProcessPoolExecutor` with `--workers`
+flag. Each `.rdf` file is fully independent → safe for multiprocessing. Also switched merge
+step from full-RAM concat to streaming `ParquetWriter` (peak RAM: one batch vs all batches).
+
+**Parse results:**
+| Metric | Value |
+|--------|-------|
+| Total RDF records parsed | **71,511,821** |
+| Parse errors | 20,375 (0.03%) |
+| Have abstract | 23,164,486 (32.4%) |
+| Publisher-declared language | 41,073,717 rows |
+| JATS in abstracts | **0** ✅ |
+| Parse time | **622.3 minutes (~10.4 hours)** |
+| Output file size | 19,823 MB |
+
+### Clean stage — issues and fixes
+
+**Problem 1 — OOM on `pd.read_parquet(71M rows)`:** Loading the full 20 GB parsed parquet
+into pandas RAM killed the process. Fix: switched to `pq.iter_batches(batch_size=500_000)`
+chunked loading, dropping empty rows per chunk. Peak RAM: ~2 GB vs ~40 GB.
+
+**Problem 2 — Corrupted UTF-8 strings:** `ArrowException: Unknown error: Wrapping
+一台の多機能機械が付加Á­れた... failed`. Some strings in the parquet have broken UTF-8
+(garbled Japanese). Fix: wrapped each batch's `to_pandas()` in a try/except; corrupted batches
+skipped with a warning rather than crashing the full load.
+
+**Problem 3 — OOM on `report_parsed()`:** `report_parsed()` loaded the full 20 GB parquet
+to count rows, killing the process. Fix: all four `report_*` functions now stream in 500k-row
+chunks and accumulate counters, never loading the full file.
+
+**Problem 4 — Japanese leakage past English filter:** The `keep_only_english()` function
+trusts `dc:language="en"` from publishers without validation. Some Japanese journals declare
+their papers as English when the abstract is actually Japanese. The exploration run (below)
+revealed ~23,945/169,537 sampled docs with >10 non-ASCII characters, all with full Japanese
+abstracts. Fix: added **CJK character ratio filter** — if >5% of abstract characters are
+Japanese/Chinese Unicode (hiragana, katakana, kanji, CJK Extension A), the paper is excluded
+regardless of publisher language tag.
+
+**Clean results (after CJK fix):**
+| Stage | Papers | Notes |
+|-------|--------|-------|
+| Input (parsed) | 71,511,821 | |
+| After drop empty title/abstract | 23,156,080 | dropped 48.4M |
+| After drop uninformative | 7,010,053 | dropped 16.1M |
+| After langdetect filter | 4,741,531 | kept 67.6% |
+| After CJK filter (new) | ~3,602,151 | removed ~108k Japanese-leaked papers |
+| After doc type filter | **3,602,151** | scientific papers only |
+| JATS in clean abstracts | **0** ✅ | |
+| Clean time | ~58 minutes | |
+
+The CJK filter removed **~108,000 papers** (≈ 2.9% of the pre-filter English corpus) that
+were falsely declared English by publishers. These were papers with full Japanese abstracts.
+
+### Data exploration (explore_data.py)
+
+**New script:** `pipeline/explore_data.py` — generates PNG charts and text summary for any
+pipeline stage output. Auto-detects parquet type (cleaned / classified / embedded).
+Charts: missing values, abstract length distribution, publication year, top publishers/journals.
+Special sections in summary.txt:
+- **Random examples** (n=10): shows title + first 400 chars of abstract
+- **Short abstract examples** (<20 words): catches Japanese text that slipped through
+- **JATS/XML tag survivors**: checks if any HTML/XML tags survived cleaning → all 0 ✅
+- **High non-ASCII examples** (>10 chars): catches language leakage
+
+**Key exploration findings on the cleaned corpus:**
+- Abstract length: mean **131 words**, median **113 words**
+- Publication years: range 1950–2026, peak 2010s
+- JATS survivors: **0** ✅
+- Japanese leakage in H class before CJK fix: confirmed (all 5 short-abstract examples
+  were full Japanese text)
+- High non-ASCII (>10 chars) = 14% of sample — mostly **legitimate English** papers using
+  Unicode em-dashes, subscripts, non-breaking spaces; NOT a problem
+
+---
+
+## Chapter 11 — Full Corpus Re-Embedding (FullDatasetV2_clean)
+
+**Date:** 2026-06-02 (started), ongoing
+
+**Goal:** Generate Qwen3-Embedding-0.6B embeddings for all 3,602,151 English scientific
+papers. Outputs sharded parquet files to `data/embedded/FullDatasetV2_clean/`.
+
+**Command:**
+```bash
+DEVICE=cuda \
+python pipeline/run_reembed.py \
+    --run-name FullDatasetV2_clean \
+    --source data/cleaned/english_FullDatasetV2.parquet \
+    --batch-size 16 \
+    --max-length 768 \
+    --shard-size 50000
+```
+
+### Token length analysis (new script: check_token_lengths.py)
+
+Before embedding, measured the real token length distribution on a 5,000-doc sample:
+
+| Percentile | Tokens |
+|-----------|--------|
+| p50 | 263 |
+| p75 | 358 |
+| p90 | 438 |
+| p95 | 493 |
+| p99 | 633 |
+| p99.9 | 915 |
+| max | 1,463 |
+
+- **>512 tokens: 4.04%** — not "99% coverage" as initially claimed
+- **>768 tokens: 0.28%** — very small fraction
+- **Chosen cap: 768 tokens** — only 0.28% truncated, and those are very long abstracts
+  where the topic is established well within the first 768 tokens
+
+### Fixes to run_reembed.py
+
+1. **CUDA OOM with batch_size=16, default max_length=32768:** Qwen3 defaults to 32768 max
+   tokens. Attention is O(L²), so long abstracts consumed all 11GB VRAM, causing segfaults.
+   Fix: `model.max_seq_length = max_length` (set to 768) caps tokenizer truncation.
+   Added `--max-length` CLI argument (default: 512, used 768 for this run).
+
+2. **Thousands of tiny "4/4" progress bars:** `getEmbeddings()` created a new tqdm bar per
+   outer chunk (batch_size × 4 docs). Fix: added `show_progress=False` parameter to
+   `getEmbeddings()`, replaced with one outer tqdm bar tracking total docs across the full job.
+
+3. **Resume re-embedding already-done shards:** On restart, the code re-embedded all rows
+   from position 0 (just skipping the write step). At 13 docs/sec this wasted many hours.
+   Fix: calculate `skip_rows = n_done_shards × shard_size`, fast-forward through those rows
+   without calling the embedding model.
+
+4. **Outer batch size too small:** Was `batch_size × 4 = 64`. Increased to
+   `max(batch_size × 8, 256)` for better GPU utilisation.
+
+### Embedding run status (as of 2026-06-04)
+
+| Metric | Value |
+|--------|-------|
+| Total docs to embed | 3,602,151 |
+| Shard size | 50,000 docs (~200 MB each) |
+| Total shards needed | 73 |
+| GPU | NVIDIA GTX 1080 Ti (11 GB VRAM) |
+| GPU utilisation | **100%** |
+| VRAM used | 7,478 MB / 11,264 MB |
+| Power draw | 193W / 250W |
+| Temperature | 83°C (stable, max safe ~91°C) |
+| Throughput | ~13 docs/sec |
+| Progress | ~58% (≈2.1M / 3.6M docs) |
+| ETA | ~32 hours remaining |
+
+Two additional GTX 1080 Ti GPUs (GPU 1, 2) are idle on the same machine. Multi-GPU
+parallelism was considered but deferred — the current run is healthy and will complete.
+
+---
+
+## Chapter 12 — Retraining Infrastructure (run_training.py)
+
+**Date:** 2026-05-25
+
+**Goal:** Build a solid, reusable pipeline for training new classifier versions on larger
+and more diverse data, fixing the 5-class coverage limitation of v2.
+
+### Root cause of the 5-class limitation
+
+The v2 model only knows 5 LCC main classes (T, Q, R, H, L) because the 26k training sample
+was dominated by STEM papers from CiNii. Non-STEM topics (J=Political Science, K=Law,
+D=History, G=Geography, etc.) either didn't appear in the sample or appeared in too few
+papers to form clusters.
+
+**Evidence from classification report:**
+- H (Social Sciences) and L (Education) have mean confidence = **1.000** — overconfidence
+  indicating the model uses these as "garbage bins" for anything not STEM
+- Sample titles in H class include J and D-class papers (political science, history)
+  classified with fake certainty
+
+### New script: pipeline/run_training.py
+
+Self-contained orchestrator covering: sample → embed → cluster → [manual LCC pause] → train.
+
+**Stages:**
+1. **SAMPLE** — draw N docs from any parquet (cleaned text or pre-embedded)
+2. **EMBED** — generate embeddings; auto-skipped if source already has `embeddings` column
+3. **CLUSTER** — UMAP(15 components) + HDBSCAN auto-tune via silhouette score; TF-IDF
+   keywords per cluster; outputs `lcc_mapping.csv` template; optionally bootstraps LCC
+   suggestions from existing model (`--suggest-lcc`)
+4. **[PAUSE]** — user fills `lcc_mapping.csv` (lcc_subclass + lcc_division columns)
+5. **TRAIN** — validates mapping, builds training_dataset.parquet, trains Model A + B;
+   saves `model_a.pt`, `model_b.pt`, `encoders.pkl`, `hierarchy.pkl`, `metrics.json`
+
+**Key design decisions:**
+- All stages tracked in `run_state.json` — auto-skip completed stages on re-run
+- All writes atomic (`.tmp.parquet` → `os.replace()`) — no partial files
+- LCC bootstrap: `--suggest-lcc models/release` runs existing model on sample docs, takes
+  majority-vote prediction per cluster as `suggested_lcc_*` in the CSV — user just
+  verifies/corrects instead of assigning from scratch
+- File naming: `model_a.pt`, `model_b.pt`, `encoders.pkl` (cleaner than old
+  `model_a_flat.pt`, `label_encoders.pkl`)
+- `11_classify.py` updated to support both old and new naming conventions via fallback
+
+**Output layout:**
+```
+training_runs/{run_name}/
+    sample.parquet, embedded.parquet, clusters.parquet
+    cluster_metadata.parquet, lcc_mapping.csv, training_dataset.parquet
+    run_state.json, hdbscan_tuning.json
+
+models/{run_name}/
+    model_a.pt, model_b.pt, encoders.pkl, hierarchy.pkl
+    metrics.json, report_a.txt, report_b.txt
+```
+
+### Pipeline methodology assessment
+
+The approach (clustering → pseudo-label → train classifier) is a legitimate technique
+called **cluster-based pseudo-labeling**, used in domain adaptation and digital library
+research when no labeled data exists.
+
+**Strengths:** STEM classification quality is good (T/Q/R ~97.7% of corpus, high confidence).
+**Weaknesses:**
+- 43.7% HDBSCAN outlier rate — nearly half the 26k sample discarded
+- Training only on "easy" docs (clear cluster membership), never on ambiguous ones
+- Two duplicate clustering steps in the old pipeline (04 + 05) — the v2 HDBSCAN fine-grain
+  clustering superseded the BERTopic approach; `05_merge_clusters.py` is now dead code
+
+---
+
+## Current State (2026-06-04)
+
+**In progress:**
+- [ ] Re-embedding 3,602,151 papers — **~58% complete**, GPU 0 at 100%, ETA ~32h
+
+**Completed this session:**
+- [x] Crashproof server pipeline `run_server.py`
+- [x] Classification report `12_report_classification.py` with TF-IDF analysis
+- [x] Full CiNii parse: 71,511,821 records
+- [x] Full CiNii clean: 3,602,151 English scientific papers (with CJK leakage fix)
+- [x] CJK character ratio filter — removed ~108k Japanese-leaked papers
+- [x] Data exploration script `explore_data.py`
+- [x] Token length analysis: mean 276 tokens, p99 = 633 tokens; chose cap 768
+- [x] New training pipeline `run_training.py`
+- [x] Multiple robustness fixes: chunked parquet loading, atomic writes, streaming reports
+
+**Next steps (planned):**
+- [ ] Wait for re-embedding to complete (~32h from now)
+- [ ] Run `run_training.py` on 150k-sample from FullDatasetV2_clean shards
+- [ ] Fill in `lcc_mapping.csv` (manual LCC assignment, bootstrap from v2 model)
+- [ ] Train new model (v3) with broader class coverage
+- [ ] Run `11_classify.py` on all 73 shards with new model
+- [ ] Compare v2 vs v3 classification quality report
+
