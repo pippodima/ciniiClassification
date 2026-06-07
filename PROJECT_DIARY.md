@@ -865,8 +865,10 @@ research when no labeled data exists.
 
 ## Current State (2026-06-04)
 
-**In progress:**
-- [ ] Re-embedding 3,602,151 papers — **~58% complete**, GPU 0 at 100%, ETA ~32h
+**Completed this session (continued):**
+- [x] Re-embedding **COMPLETE** — 3,602,151 docs, 73 shards, 4799.5 min (~80h total)
+      Note: ~34h wasted due to resume bug (re-embedded 1.5M already-done docs on restart).
+      Fix committed — future runs will fast-forward correctly.
 
 **Completed this session:**
 - [x] Crashproof server pipeline `run_server.py`
@@ -880,8 +882,7 @@ research when no labeled data exists.
 - [x] Multiple robustness fixes: chunked parquet loading, atomic writes, streaming reports
 
 **Next steps (planned):**
-- [ ] Wait for re-embedding to complete (~32h from now)
-- [ ] Run `run_training.py` on 150k-sample from FullDatasetV2_clean shards
+- [ ] Run `run_training.py` on 150k-sample from FullDatasetV2_clean shards (ready to go)
 - [ ] Fill in `lcc_mapping.csv` (manual LCC assignment, bootstrap from v2 model)
 - [ ] Train new model (v3) with broader class coverage
 - [ ] Run `11_classify.py` on all 73 shards with new model
