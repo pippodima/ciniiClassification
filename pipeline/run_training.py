@@ -169,37 +169,37 @@ def _load_module(filename: str):
 
 def _sample_parquet_chunked(source: Path, k: int, seed: int) -> pd.DataFrame:
     """
-    Memory-efficient random sampling from a large parquet.
-    Reads row indices without loading embeddings, then fetches only the
-    selected rows in chunks — never loads the full file into RAM.
+    Memory-efficient random sampling from a single parquet file OR a directory
+    of shard parquets (output of run_reembed.py).
+    Never loads the full dataset into RAM.
     """
-    rng = np.random.default_rng(seed)
+    import pyarrow.dataset as _ds
 
-    # Pass 1: read schema to get total row count and column list
-    pf     = pq.ParquetFile(source)
-    n_rows = pf.metadata.num_rows
-    schema_names = pf.schema_arrow.names
+    rng     = np.random.default_rng(seed)
+    dataset = _ds.dataset(str(source), format="parquet")
+    n_rows  = dataset.count_rows()
 
     if n_rows <= k:
-        # Source is smaller than requested sample — just read everything
-        return pd.read_parquet(source)
+        return dataset.to_table().to_pandas()
 
-    # Sample row indices (sorted for sequential chunk reads)
-    chosen = np.sort(rng.choice(n_rows, size=k, replace=False))
+    # Sample row indices (sorted for sequential reads)
+    chosen     = np.sort(rng.choice(n_rows, size=k, replace=False))
     chosen_set = set(chosen.tolist())
 
-    # Pass 2: stream through file keeping only chosen rows
     rows: list[pd.DataFrame] = []
     global_i = 0
-    for batch in pf.iter_batches(batch_size=20_000):
-        chunk   = batch.to_pandas()
+    for batch in dataset.to_batches(batch_size=20_000):
+        try:
+            chunk = batch.to_pandas()
+        except Exception:
+            global_i += batch.num_rows
+            continue
         n_chunk = len(chunk)
         local   = [i for i in range(n_chunk) if (global_i + i) in chosen_set]
         if local:
             rows.append(chunk.iloc[local].copy())
         global_i += n_chunk
-        # Early exit once we have all chosen rows
-        if global_i > chosen.max():
+        if global_i > int(chosen[-1]):
             break
 
     return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
