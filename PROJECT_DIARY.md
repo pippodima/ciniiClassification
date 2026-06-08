@@ -863,14 +863,101 @@ research when no labeled data exists.
 
 ---
 
-## Current State (2026-06-04)
+## Chapter 13 — Fixing a Broken `run_reembed.py` and a Corrupt Shard
 
-**Completed this session (continued):**
+**Date:** 2026-06-08
+
+**Trigger:** First attempt to kick off v3 retraining on the server —
+
+```bash
+DEVICE=cuda python pipeline/run_training.py \
+    --run-name test --source data/embedded/FullDatasetV2_clean \
+    --sample-size 100000 --suggest-lcc models/release
+```
+
+— crashed immediately at the SAMPLE stage.
+
+### Bug 1 — `IndentationError` committed to HEAD
+
+**Symptom:** `from run_reembed import sample_from_shards` raised
+`IndentationError: unexpected indent` at `run_reembed.py:351`.
+
+**Root cause:** Commit `7418008` ("Fix run_reembed resume: skip already-done rows…")
+left the file in a syntactically broken state — `_save_manifest(...)` was indented
+one level deeper than the preceding `pbar.write(...)` with no block-opening
+statement above it, and a dangling `else: _log(...)` had no matching `if`.
+This had been sitting in the committed code unnoticed because the long-running
+embedding job was started from an older, working checkout.
+
+**Fix (commit `4ca480d`):** De-indented `_save_manifest(...)` to match
+`pbar.write(...)` and removed the orphaned `else` branch — the manifest is now
+saved unconditionally after every shard write (this matches the intent of the
+original "always save progress" change anyway).
+
+### Bug 2 — Corrupt shard on disk
+
+**Symptom:** After the syntax fix, the SAMPLE stage got further but crashed in
+`sample_from_shards()` with `OSError: Corrupt snappy compressed data.` while
+reading a shard parquet.
+
+**Diagnosis:** Ran a standalone integrity scan over all 73 shards:
+
+```python
+import pyarrow.parquet as pq
+from pathlib import Path
+for p in sorted(Path("data/embedded/FullDatasetV2_clean").glob("shard_*.parquet")):
+    try:
+        pq.read_table(str(p))
+    except Exception as e:
+        print(f"CORRUPT: {p.name}  ({type(e).__name__}: {e})")
+```
+
+Result: **exactly one** bad file — `shard_00002.parquet`
+(`OSError: Corrupt snappy compressed data.`). All other 72 shards are intact.
+Likely cause: a crash/interrupt mid-write before the script's atomic
+`.tmp.parquet` → `os.replace()` write path was reached for that shard, or disk-level
+bit-rot during the ~80h run (the resume-bug period overlapped this shard's index).
+
+**Fixes (commit `ad9f6c5`):**
+
+1. **`sample_from_shards()` is now corrupt-shard tolerant** — wraps each
+   `pd.read_parquet()` in try/except, logs a warning naming the bad shard and how
+   many rows were lost from the draw, and continues instead of crashing (mirrors
+   the existing "skip and warn" pattern in `02_process_text.py` for corrupted
+   UTF-8 batches).
+2. **New `--repair-shard N` recovery mode** added to `run_reembed.py`. Re-embeds
+   *only* the ~50k source rows belonging to shard `N`, atomically overwrites
+   `shard_{N:05d}.parquet`, and updates `manifest.json` — avoids re-running the
+   remaining ~70 shards (which, at the observed ~13 docs/sec, would cost upwards
+   of 70 hours just to fix one bad file):
+
+   ```bash
+   python pipeline/run_reembed.py \
+       --run-name FullDatasetV2_clean \
+       --source data/cleaned/english_FullDatasetV2.parquet \
+       --device cuda --batch-size 16 --max-length 768 \
+       --repair-shard 2
+   ```
+
+**Status:** Fixes committed and pushed to the server checkout. Repair of
+`shard_00002.parquet` queued — once done, `run_training.py` will draw from a
+complete, uncorrupted 3,602,151-doc pool.
+
+---
+
+## Current State (2026-06-08)
+
+**Completed this session:**
+- [x] Diagnosed and fixed a committed `IndentationError` in `run_reembed.py`
+      (commit `7418008` had broken the file — see Chapter 13)
+- [x] Found and isolated one corrupt shard (`shard_00002.parquet`) out of 73
+- [x] Made `sample_from_shards()` tolerant of corrupt shards (skip + warn)
+- [x] Added `--repair-shard N` single-shard recovery mode to `run_reembed.py`
+
+**Carried over from previous session:**
 - [x] Re-embedding **COMPLETE** — 3,602,151 docs, 73 shards, 4799.5 min (~80h total)
       Note: ~34h wasted due to resume bug (re-embedded 1.5M already-done docs on restart).
       Fix committed — future runs will fast-forward correctly.
-
-**Completed this session:**
 - [x] Crashproof server pipeline `run_server.py`
 - [x] Classification report `12_report_classification.py` with TF-IDF analysis
 - [x] Full CiNii parse: 71,511,821 records
@@ -882,7 +969,8 @@ research when no labeled data exists.
 - [x] Multiple robustness fixes: chunked parquet loading, atomic writes, streaming reports
 
 **Next steps (planned):**
-- [ ] Run `run_training.py` on 150k-sample from FullDatasetV2_clean shards (ready to go)
+- [ ] Run `--repair-shard 2` on the server to fix the corrupt shard
+- [ ] Run `run_training.py` on a 100k–150k sample from `FullDatasetV2_clean` shards
 - [ ] Fill in `lcc_mapping.csv` (manual LCC assignment, bootstrap from v2 model)
 - [ ] Train new model (v3) with broader class coverage
 - [ ] Run `11_classify.py` on all 73 shards with new model
