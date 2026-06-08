@@ -1011,9 +1011,12 @@ def main():
     if suggest_dir:
         _log(f"  LCC hint  : {suggest_dir}")
 
-    state = _load_state(run_dir)
-
     def _should_run(stage: str) -> bool:
+        # Reload from disk every time — earlier stages in this same run can
+        # write state (e.g. stage_sample auto-marking "embed" done when the
+        # source already had embeddings), and a stale in-memory snapshot would
+        # miss that, causing the stage to run again unnecessarily.
+        state = _load_state(run_dir)
         if args.dry_run:
             done = state.get(stage, {}).get("done", False)
             skip = stage in args.skip
