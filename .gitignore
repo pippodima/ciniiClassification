@@ -50,3 +50,4 @@ env/
 # ── Release model (must be last — last matching rule wins) ───────────────────
 !models/release/
 !models/release/**
+PROJECT_DIARY.md
