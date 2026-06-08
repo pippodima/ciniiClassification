@@ -185,16 +185,108 @@ def sample_from_shards(shard_dir: Path, k: int, seed: int = 42) -> pd.DataFrame:
     rng.shuffle(alloc)                  # don't bias toward early shards
 
     parts: list[pd.DataFrame] = []
+    n_short = 0
     for shard_path, n_draw in zip(shard_files, alloc):
         if n_draw == 0:
             continue
-        shard = pd.read_parquet(str(shard_path))
+        try:
+            shard = pd.read_parquet(str(shard_path))
+        except Exception as e:
+            n_short += n_draw
+            print(f"  ⚠  skipped corrupt shard {shard_path.name} "
+                  f"({type(e).__name__}: {e}) — {n_draw:,} rows lost from sample")
+            continue
         n_draw = min(n_draw, len(shard))
         parts.append(shard.sample(n_draw, random_state=int(rng.integers(1, 2**31))))
+
+    if n_short:
+        print(f"  ⚠  sample is short by {n_short:,} rows due to corrupt shards "
+              f"({len(parts) and sum(len(p) for p in parts):,}/{k:,} drawn)")
 
     result = pd.concat(parts, ignore_index=True)
     # Final shuffle so the sample isn't ordered by shard
     return result.sample(frac=1, random_state=seed).reset_index(drop=True)
+
+
+# ─── Single-shard repair ──────────────────────────────────────────────────────
+
+def repair_shard(
+    source:     Path,
+    out_dir:    Path,
+    shard_id:   int,
+    device:     str,
+    batch_size: int,
+    model_name: str,
+    max_length: int = 512,
+) -> None:
+    """
+    Re-embed exactly the row range belonging to one shard and overwrite it.
+
+    Use this when a single shard file is corrupt on disk (e.g. "Corrupt snappy
+    compressed data") — re-running the full job would re-embed everything from
+    that point on, wasting tens of hours. This recomputes only the ~50k rows
+    that belong to `shard_id` and atomically replaces the bad file.
+    """
+    manifest = _load_manifest(out_dir)
+    if not manifest:
+        raise FileNotFoundError(f"No manifest.json found in {out_dir}")
+
+    n_total    = manifest["n_docs"]
+    shard_size = manifest["shard_size"]
+    row_start  = shard_id * shard_size
+    row_end    = min(row_start + shard_size, n_total)
+    if row_start >= n_total:
+        raise ValueError(f"shard {shard_id} is out of range (n_total={n_total:,})")
+
+    _section(f"REPAIR SHARD {shard_id:05d}")
+    _log(f"  Rows to re-embed : [{row_start:,} : {row_end:,})  ({row_end - row_start:,} rows)")
+    _log(f"  Output           : {out_dir / SHARD_FMT.format(shard_id)}")
+
+    pf     = pq.ParquetFile(source)
+    _embed = _load_module("03_embed.py")
+    _proc  = _load_module("02_process_text.py")
+    model  = _embed.getModel(device=device, modelName=model_name)
+    model.max_seq_length = max_length
+    query = (
+        "Given a scientific paper title and abstract, "
+        "produce an embedding that captures the research topic."
+    )
+
+    # Pull exactly the rows for this shard out of the source, batch by batch.
+    parts: list[pd.DataFrame] = []
+    global_row = 0
+    for raw_batch in pf.iter_batches(batch_size=max(batch_size * 8, 256)):
+        b_start, b_end = global_row, global_row + raw_batch.num_rows
+        global_row = b_end
+        if b_end <= row_start or b_start >= row_end:
+            if b_start >= row_end:
+                break
+            continue
+        lo = max(row_start - b_start, 0)
+        hi = min(row_end - b_start, raw_batch.num_rows)
+        parts.append(raw_batch.slice(lo, hi - lo).to_pandas())
+
+    chunk = pd.concat(parts, ignore_index=True)
+    if "clean_abstract" not in chunk.columns:
+        chunk = _proc.apply_clean_text_to_df(chunk)
+
+    docs = _embed.get_title_and_abstract(chunk, title_col="title", abs_col="clean_abstract")
+    embs = _embed.getEmbeddings(
+        model=model, query=query, documents=docs,
+        device=device, batch_size=batch_size, show_progress=True,
+    )
+
+    shard_path = out_dir / SHARD_FMT.format(shard_id)
+    _write_shard(chunk, embs, shard_path)
+
+    done_shards = set(manifest.get("completed_shards", []))
+    done_shards.add(shard_id)
+    manifest["completed_shards"] = sorted(done_shards)
+    manifest["n_shards"]         = len(done_shards)
+    manifest["updated_at"]       = datetime.now().isoformat()
+    _save_manifest(out_dir, manifest)
+
+    _log(f"  ✅ shard {shard_id:05d} repaired — {len(chunk):,} rows rewritten")
 
 
 # ─── Main embedding loop ──────────────────────────────────────────────────────
@@ -428,9 +520,26 @@ def main():
                         help="HuggingFace embedding model")
     parser.add_argument("--dry-run",    action="store_true",
                         help="Print plan without writing anything")
+    parser.add_argument("--repair-shard", type=int, default=None, metavar="N",
+                        help="Re-embed only shard N's row range and overwrite "
+                             "it in place (use when a shard file is corrupt on "
+                             "disk, e.g. 'Corrupt snappy compressed data') — "
+                             "avoids re-running the whole job from that point on")
     args = parser.parse_args()
 
     out_dir = EMBEDDED_DIR / args.run_name
+
+    if args.repair_shard is not None:
+        repair_shard(
+            source     = Path(args.source),
+            out_dir    = out_dir,
+            shard_id   = args.repair_shard,
+            device     = args.device,
+            batch_size = args.batch_size,
+            model_name = args.model_name,
+            max_length = args.max_length,
+        )
+        return
 
     _section(f"RE-EMBED  run={args.run_name}  {datetime.now():%Y-%m-%d %H:%M}")
     _log(f"  Source     : {args.source}")
