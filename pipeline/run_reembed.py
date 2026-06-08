@@ -348,16 +348,14 @@ def run_reembed(
             pbar.write(f"  ✅ shard {shard_id:05d}  "
                        f"{total_done:>8,}/{n_total:,}  "
                        f"{rate:,.0f} doc/s  ETA {eta/60:.0f} min")
-                _save_manifest(out_dir, {
-                    "n_docs":            total_done,
-                    "n_shards":          len(done_shards),
-                    "shard_size":        shard_size,
-                    "model_name":        model_name,
-                    "completed_shards":  sorted(done_shards),
-                    "updated_at":        datetime.now().isoformat(),
-                })
-            else:
-                _log(f"  ⏭  shard {shard_id:05d} already done — skipping")
+            _save_manifest(out_dir, {
+                "n_docs":            total_done,
+                "n_shards":          len(done_shards),
+                "shard_size":        shard_size,
+                "model_name":        model_name,
+                "completed_shards":  sorted(done_shards),
+                "updated_at":        datetime.now().isoformat(),
+            })
 
             shard_id += 1
 
