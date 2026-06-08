@@ -68,6 +68,7 @@ import os
 import pickle
 import sys
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -85,12 +86,24 @@ from config import ENGLISH, MODELS_DIR
 RUNS_DIR   = ROOT / "training_runs"
 STATE_FILE = "run_state.json"
 
-# HDBSCAN search space: (min_cluster_size, min_samples)
-_HDBSCAN_GRID = [
-    (mcs, ms)
-    for mcs in [15, 20, 25, 30, 40, 50]
-    for ms in [3, 5, 7]
-]
+def _hdbscan_grid(n: int) -> list[tuple[int, int]]:
+    """
+    HDBSCAN search space: (min_cluster_size, min_samples).
+
+    min_cluster_size is an ABSOLUTE row count, but the cluster count it
+    produces depends on the dataset size — e.g. mcs=50 gave 247 clusters at
+    n=100k but 600+ at n=300k (same density, 3x more points per cluster).
+    A fixed grid that worked at one scale silently produces zero in-range
+    configs at another (see PROJECT_DIARY chapter 17).
+
+    So candidates are scaled as fractions of n, keeping the resulting
+    cluster count roughly constant (and inside the LCC-aligned target
+    window) regardless of sample size. min_samples doesn't need scaling —
+    it controls density-estimate conservativeness, not absolute size.
+    """
+    fracs = [0.0005, 0.00075, 0.001, 0.0015, 0.002, 0.003, 0.004, 0.006]
+    mcs_candidates = sorted(set(max(15, int(n * f)) for f in fracs))
+    return [(mcs, ms) for mcs in mcs_candidates for ms in (3, 5, 7)]
 
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -450,7 +463,10 @@ def stage_cluster(run_dir: Path,
         random_state=42,
         low_memory=(n > 50_000),
     )
-    reduced = reducer.fit_transform(embs)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*force_all_finite.*")
+        warnings.filterwarnings("ignore", message=".*n_jobs value.*overridden.*")
+        reduced = reducer.fit_transform(embs)
     _log(f"    done in {time.time()-t0:.1f}s")
 
     # ── HDBSCAN auto-tune ─────────────────────────────────────────────────────
@@ -460,7 +476,7 @@ def stage_cluster(run_dir: Path,
     sil_idx    = np.random.default_rng(42).choice(n, sil_sample, replace=False)
 
     results = []
-    for mcs, ms in _HDBSCAN_GRID:
+    for mcs, ms in _hdbscan_grid(n):
         try:
             model = hdbscan_lib.HDBSCAN(
                 min_cluster_size=mcs,
@@ -469,7 +485,10 @@ def stage_cluster(run_dir: Path,
                 cluster_selection_method="eom",
                 core_dist_n_jobs=-1,
             )
-            labels = model.fit_predict(reduced)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*force_all_finite.*")
+                warnings.filterwarnings("ignore", message=".*n_jobs value.*overridden.*")
+                labels = model.fit_predict(reduced)
             n_cls  = int((labels >= 0).sum() > 0 and len(set(labels[labels >= 0])))
             n_out  = int((labels == -1).sum())
             out_rate = n_out / n
@@ -512,7 +531,10 @@ def stage_cluster(run_dir: Path,
         cluster_selection_method="eom",
         core_dist_n_jobs=-1,
     )
-    cluster_labels = final_model.fit_predict(reduced)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*force_all_finite.*")
+        warnings.filterwarnings("ignore", message=".*n_jobs value.*overridden.*")
+        cluster_labels = final_model.fit_predict(reduced)
 
     # Save tuning results alongside state
     (run_dir / "hdbscan_tuning.json").write_text(
