@@ -415,8 +415,8 @@ def _suggest_lcc(df_emb: pd.DataFrame, clusters: np.ndarray,
 def stage_cluster(run_dir: Path,
                   suggest_model_dir: Path | None = None,
                   device: str = "cpu",
-                  min_clusters: int = 30,
-                  max_clusters: int = 400,
+                  min_clusters: int = 100,
+                  max_clusters: int = 250,
                   umap_components: int = 15) -> int:
     in_path       = run_dir / "embedded.parquet"
     out_clusters  = run_dir / "clusters.parquet"
@@ -988,8 +988,18 @@ def main():
                         help="Max training epochs (default: 60)")
     parser.add_argument("--train-batch", type=int, default=256,
                         help="MLP training batch size (default: 256)")
-    parser.add_argument("--min-clusters", type=int, default=30)
-    parser.add_argument("--max-clusters", type=int, default=400)
+    parser.add_argument("--min-clusters", type=int, default=100,
+                        help="Lower bound for the HDBSCAN auto-tune target range "
+                             "(default: 100). Configs producing fewer clusters than "
+                             "this are disqualified regardless of silhouette score. "
+                             "LCC has ~200 STEM-relevant subclasses — v2's 169-cluster "
+                             "run (26k sample) hit the sweet spot at this granularity, "
+                             "so the default window is centred there rather than left "
+                             "wide open (silhouette alone tends to favour smaller, "
+                             "noisier cores — see PROJECT_DIARY chapter 3 and 15).")
+    parser.add_argument("--max-clusters", type=int, default=250,
+                        help="Upper bound for the HDBSCAN auto-tune target range "
+                             "(default: 250). See --min-clusters for rationale.")
     parser.add_argument("--umap-components", type=int, default=15)
     parser.add_argument("--seed",        type=int, default=42)
     parser.add_argument("--dry-run",     action="store_true",
