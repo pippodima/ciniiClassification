@@ -50,4 +50,8 @@ env/
 # ── Release model (must be last — last matching rule wins) ───────────────────
 !models/release/
 !models/release/**
+
+# ── Local-only docs (notes/diary/thesis drafts — not for the public repo) ────
 PROJECT_DIARY.md
+CLAUDE.md
+thesis/
