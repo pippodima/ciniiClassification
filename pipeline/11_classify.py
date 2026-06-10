@@ -312,16 +312,29 @@ def main():
         print("  OOD centroids : none found (run --make-centroids to enable "
               "pred_centroid_sim)")
 
-    # ── Stream input parquet row-group by row-group ──────────────────────────
-    pf = pq.ParquetFile(args.input)
-    total_rows = pf.metadata.num_rows
+    # ── Resolve input: a single parquet file OR a sharded directory ──────────
+    in_path = Path(args.input)
+    if in_path.is_dir():
+        input_files = sorted(in_path.glob("shard_*.parquet")) or sorted(in_path.glob("*.parquet"))
+        if not input_files:
+            raise FileNotFoundError(f"No parquet shards found in {in_path}")
+        print(f"  Sharded input : {len(input_files)} files")
+    else:
+        input_files = [in_path]
+
+    total_rows = sum(pq.ParquetFile(str(f)).metadata.num_rows for f in input_files)
     print(f"\nClassifying {total_rows:,} rows in chunks of {args.chunk_size}...")
 
     writer       = None
     file_schema  = None
     n_classified = 0
 
-    for batch in tqdm(pf.iter_batches(batch_size=args.chunk_size),
+    def _all_batches():
+        for f in input_files:
+            for b in pq.ParquetFile(str(f)).iter_batches(batch_size=args.chunk_size):
+                yield b
+
+    for batch in tqdm(_all_batches(),
                       total=-(total_rows // -args.chunk_size),
                       desc="chunks"):
         chunk = batch.to_pandas()
