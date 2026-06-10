@@ -20,11 +20,22 @@ Usage:
     python pipeline/11_classify.py --chunk-size 2000 ...
 
 Output columns added to the existing parquet:
-    pred_lcc_div   – LCC numeric division, e.g. "TJ266"
-    pred_lcc       – LCC subclass,          e.g. "TJ"
-    pred_lcc_main  – LCC main class,        e.g. "T"
-    conf_div       – softmax confidence for pred_lcc_div  (0–1)
-    model_used     – "a" or "b"
+    pred_lcc_div      – LCC numeric division, e.g. "TJ266"
+    pred_lcc          – LCC subclass,          e.g. "TJ"
+    pred_lcc_main     – LCC main class,        e.g. "T"
+    conf_div          – softmax confidence for pred_lcc_div  (0–1).
+                        NOTE: over-confident off-distribution — do NOT use as a
+                        quality filter. Use pred_centroid_sim instead.
+    pred_centroid_sim – cosine sim of the doc to the centroid of its predicted
+                        division (only if centroids.npz exists in --model-dir).
+                        Low ⇒ outlier-like / weak prediction. This is the honest
+                        in-distribution / quality signal.
+    model_used        – "a" or "b"
+
+Enable pred_centroid_sim once per model:
+    python pipeline/11_classify.py --model-dir models/v3_300k \
+        --make-centroids training_runs/v3_300k/training_dataset.parquet \
+        --input X --output X   # --input/--output ignored in this mode
 """
 from __future__ import annotations
 import argparse
@@ -145,6 +156,49 @@ def load_artefacts(model_dir: Path, model_choice: str, device: str):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# OOD / in-distribution score via division centroids
+# ─────────────────────────────────────────────────────────────────────────────
+# WHY: the softmax confidence (conf_div) is unusable as a quality filter — the
+# model is grossly over-confident off-distribution (it labels ~79% of the points
+# HDBSCAN called noise with conf>0.9; see reports/eval_v3_300k). A geometric
+# signal is far more honest: how close is a document to the CENTROID of the
+# cluster it was assigned to. Low pred_centroid_sim ⇒ the doc sits far from any
+# trained cluster core (outlier-like) ⇒ the prediction is a weak guess, even if
+# conf_div ≈ 1.0. ~50% of the corpus resembles these outliers and is otherwise
+# unmeasured, so this column is the main lever for trusting/filtering output and
+# for slicing the journal/publisher ground-truth check (in-distribution vs not).
+
+def build_centroids(train_parquet: Path, le_div, out_path: Path):
+    """One-shot: per-division mean embedding (L2-normed) → centroids.npz."""
+    df = pd.read_parquet(str(train_parquet), columns=["embeddings", "lcc_division"])
+    X = np.vstack(df["embeddings"].values).astype(np.float32)
+    divs = df["lcc_division"].to_numpy()
+    cents = np.zeros((len(le_div.classes_), X.shape[1]), dtype=np.float32)
+    for i, c in enumerate(le_div.classes_):
+        m = divs == c
+        if m.any():
+            v = X[m].mean(0)
+            cents[i] = v / (np.linalg.norm(v) + 1e-9)
+    np.savez(str(out_path), centroids=cents, classes=np.asarray(le_div.classes_))
+    print(f"  ✅ centroids.npz → {out_path}  ({(cents != 0).any(1).sum()}/{len(cents)} divisions)")
+
+
+def load_centroids(model_dir: Path, le_div):
+    """Load centroids.npz from model_dir, re-ordered to match le_div.classes_."""
+    p = model_dir / "centroids.npz"
+    if not p.exists():
+        return None
+    z = np.load(str(p), allow_pickle=True)
+    cents, classes = z["centroids"].astype(np.float32), z["classes"]
+    idx = {c: i for i, c in enumerate(classes)}
+    out = np.zeros((len(le_div.classes_), cents.shape[1]), dtype=np.float32)
+    for i, c in enumerate(le_div.classes_):
+        if c in idx:
+            out[i] = cents[idx[c]]
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Inference on a numpy batch
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -212,6 +266,10 @@ def main():
                         help="Inference batch size (default: 512)")
     parser.add_argument("--chunk-size", type=int, default=5000,
                         help="Rows read from parquet per chunk (default: 5000)")
+    parser.add_argument("--make-centroids", default=None, metavar="TRAIN_PARQUET",
+                        help="One-shot: build centroids.npz in --model-dir from a "
+                             "training_dataset.parquet (per-division mean embedding), "
+                             "then exit. Enables the pred_centroid_sim OOD column.")
     args = parser.parse_args()
 
     model_dir = Path(args.model_dir)
@@ -231,6 +289,21 @@ def main():
     )
     print(f"  LCC divisions : {len(le_div.classes_)}")
     print(f"  LCC subclasses: {len(le_sub.classes_)}")
+
+    # ── One-shot centroid builder ────────────────────────────────────────────
+    if args.make_centroids:
+        print(f"\nBuilding division centroids from {args.make_centroids} ...")
+        build_centroids(Path(args.make_centroids), le_div, model_dir / "centroids.npz")
+        return
+
+    # ── OOD centroids (optional) ─────────────────────────────────────────────
+    centroids = load_centroids(model_dir, le_div)
+    if centroids is not None:
+        print(f"  OOD centroids : loaded ({(centroids != 0).any(1).sum()} divisions)"
+              f" → pred_centroid_sim column enabled")
+    else:
+        print("  OOD centroids : none found (run --make-centroids to enable "
+              "pred_centroid_sim)")
 
     # ── Stream input parquet row-group by row-group ──────────────────────────
     pf = pq.ParquetFile(args.input)
@@ -271,6 +344,12 @@ def main():
         chunk["conf_div"]      = conf.round(4)
         chunk["model_used"]    = args.model
 
+        # OOD score: cosine sim of each doc to the centroid of ITS predicted
+        # division. Embeddings are unit-norm, so dot == cosine. Low = outlier-like.
+        if centroids is not None:
+            sims = np.einsum("ij,ij->i", embs, centroids[div_idx]).astype(np.float32)
+            chunk["pred_centroid_sim"] = sims.round(4)
+
         # Drop the bulky embeddings column from output (saves disk space)
         chunk = chunk.drop(columns=["embeddings"], errors="ignore")
 
@@ -300,7 +379,10 @@ def main():
     print(f"  Classified     : {n_classified:,} documents")
     print(f"  Output         : {out_path}")
 
-    result = pd.read_parquet(out_path, columns=["pred_lcc_main", "pred_lcc", "pred_lcc_div", "conf_div"])
+    out_cols = ["pred_lcc_main", "pred_lcc", "pred_lcc_div", "conf_div"]
+    if centroids is not None:
+        out_cols.append("pred_centroid_sim")
+    result = pd.read_parquet(out_path, columns=out_cols)
     print(f"\n  Top LCC main classes:")
     for cls, cnt in result["pred_lcc_main"].value_counts().head(10).items():
         print(f"    {cls:4s}  {cnt:>8,}  ({cnt/n_classified:.1%})")
@@ -312,6 +394,12 @@ def main():
     print(f"    median= {result['conf_div'].median():.3f}")
     print(f"    <0.50 = {(result['conf_div'] < 0.50).sum():,}  ({(result['conf_div'] < 0.50).mean():.1%})")
     print(f"    <0.30 = {(result['conf_div'] < 0.30).sum():,}  ({(result['conf_div'] < 0.30).mean():.1%})")
+    if "pred_centroid_sim" in result.columns:
+        s = result["pred_centroid_sim"]
+        print(f"\n  Centroid sim (OOD signal — use this, NOT conf_div, to filter):")
+        print(f"    mean   = {s.mean():.3f}   median = {s.median():.3f}")
+        print(f"    <0.50  = {(s < 0.50).sum():,}  ({(s < 0.50).mean():.1%})  ← outlier-like, weak predictions")
+        print(f"    <0.40  = {(s < 0.40).sum():,}  ({(s < 0.40).mean():.1%})")
     print(f"{'='*55}")
 
 
