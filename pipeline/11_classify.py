@@ -148,6 +148,13 @@ def load_artefacts(model_dir: Path, model_choice: str, device: str):
             raise FileNotFoundError(f"Model B weights not found in {model_dir}")
         state = torch.load(pt, map_location=device, weights_only=True)
 
+    # Naming compat: run_training.py calls the backbone `bb`, the older
+    # 10_train_classifier.py (v2/release) calls it `backbone`. Remap so either
+    # checkpoint loads into this module's `backbone.*` layout.
+    if any(k.startswith("bb.") for k in state):
+        state = {("backbone." + k[3:] if k.startswith("bb.") else k): v
+                 for k, v in state.items()}
+
     model.load_state_dict(state)
     model.to(device)
     model.eval()
