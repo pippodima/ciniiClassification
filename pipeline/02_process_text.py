@@ -192,6 +192,10 @@ def drop_uninformative_abstracts(df: pd.DataFrame) -> pd.DataFrame:
 def apply_clean_text_to_df(df: pd.DataFrame) -> pd.DataFrame:
     print("Cleaning text")
     df["clean_abstract"] = df["abstract"].progress_apply(clean_abstract)
+    # Clean titles too: clean_abstract is a general HTML/LaTeX stripper, and the
+    # raw title flows into full_text (title_en + abstract_en) at embed time.
+    # Without this, <sub>/<sup>/JATS markup in titles leaks into the embeddings.
+    df["clean_title"] = df["title"].progress_apply(clean_abstract)
     return df
 
 
@@ -340,7 +344,9 @@ def translate_batch_m2m(text_list, src_lang, batch_size=4):
 def translate_to_eng(df):
     print("Translating to English using local M2M100 model")
 
-    df["title_en"] = df["title"].astype(str)
+    # Use the cleaned title (falls back to raw title if clean step didn't run)
+    _title_src = "clean_title" if "clean_title" in df.columns else "title"
+    df["title_en"] = df[_title_src].astype(str)
     df["abstract_en"] = df["clean_abstract"].astype(str)
 
     # ---------- TITLES ----------
@@ -355,7 +361,7 @@ def translate_to_eng(df):
             continue
 
         idx = df.index[(df["title_lang"] == lang)]
-        texts = df.loc[idx, "title"].tolist()
+        texts = df.loc[idx, _title_src].tolist()
 
         translated = translate_batch_m2m(texts, norm)
         df.loc[idx, "title_en"] = translated
