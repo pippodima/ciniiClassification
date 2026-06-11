@@ -36,10 +36,28 @@ Usage (server, where the classified parquet lives):
 from __future__ import annotations
 
 import argparse
+import re
+import unicodedata
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+# tag/markup tokens that leak from uncleaned titles (<sub>,<sup>,<scp>,JATS …)
+# plus generic academic filler that drowns out the topical signal.
+_KW_STOP = {
+    "sub", "sup", "scp", "inf", "italic", "bold", "jats", "title", "sec",
+    "using", "based", "study", "studies", "new", "novel", "report", "reports",
+    "effect", "effects", "analysis", "method", "methods", "application",
+    "applications", "research", "investigation", "case", "review",
+}
+
+def _clean_title(text: str) -> str:
+    """Strip HTML/JATS tags and normalise full-width → ASCII for display + TF-IDF."""
+    text = unicodedata.normalize("NFKC", str(text))   # ＣＨＥＭ → CHEM, etc.
+    text = re.sub(r"<[^>]+>", " ", text)              # drop <sub>…</sub> markup
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
 def main():
@@ -60,8 +78,12 @@ def main():
 
     cols = ["journal", args.title_col, "pred_lcc_main", "pred_lcc", "pred_lcc_div"]
     df = pd.read_parquet(args.input, columns=cols)
-    df["journal"] = df["journal"].astype("string").str.strip()
-    df = df[df["journal"].notna() & (df["journal"].str.len() > 0)]
+    # NFKC-normalise + strip markup so full-width/variant journal names merge
+    # (e.g. ＣＨＥＭＩＣＡＬ　ＢＵＬＬＥＴＩＮ → CHEMICAL BULLETIN). Apply the SAME
+    # normalisation in 17_score_vs_journal_gold.py so the gold map keys match.
+    df = df[df["journal"].notna()]
+    df["journal"] = df["journal"].astype(str).map(_clean_title)
+    df = df[df["journal"].str.len() > 0]
 
     counts = df["journal"].value_counts()
     top_journals = counts.head(args.top).index.tolist()
@@ -77,22 +99,32 @@ def main():
         dom_sub = vc_sub.index[0]
         purity = vc_sub.iloc[0] / n
 
+        # cleaned titles (strip <sub>/<sup>/JATS markup, NFKC-normalise)
+        clean = sub[args.title_col].dropna().astype(str).map(_clean_title)
+        clean = clean[clean.str.len() > 0]
+
         # sample titles (deterministic)
-        titles = (sub[args.title_col].dropna().astype(str)
-                  .drop_duplicates().head(args.samples).tolist())
+        titles = clean.drop_duplicates().head(args.samples).tolist()
         sample_titles = " | ".join(t[:90] for t in titles)
 
         # content keywords from titles (independent of the LCC prediction)
+        # token_pattern keeps ASCII alpha words only → drops digits, 第N報, CJK
         kw = ""
-        txt = sub[args.title_col].dropna().astype(str)
-        if len(txt) >= 3:
+        if len(clean) >= 3:
             try:
-                vec = TfidfVectorizer(max_features=2000, stop_words="english",
-                                      ngram_range=(1, 2), min_df=2)
-                X = vec.fit_transform(txt)
+                # builtin english stopwords; custom _KW_STOP applied as a
+                # post-filter so we keep informative bigrams intact.
+                vec = TfidfVectorizer(
+                    max_features=2000, stop_words="english",
+                    token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]+\b",
+                    ngram_range=(1, 2), min_df=2)
+                X = vec.fit_transform(clean)
                 scores = np.asarray(X.mean(axis=0)).ravel()
                 terms = np.array(vec.get_feature_names_out())
-                kw = ", ".join(terms[scores.argsort()[::-1][:args.keywords]])
+                order = scores.argsort()[::-1]
+                picked = [t for t in terms[order]
+                          if not any(w in _KW_STOP for w in t.split())]
+                kw = ", ".join(picked[:args.keywords])
             except ValueError:
                 kw = ""
 
