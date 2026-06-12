@@ -1,0 +1,3 @@
+# Indexer dependencies (the web UI uses CDN scripts, no build step)
+meilisearch>=0.31,<0.40
+pyarrow>=14

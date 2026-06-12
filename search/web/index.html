@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CiNii LCC Explorer</title>
+
+<!-- InstantSearch + Meilisearch adapter (pinned, no build step) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/instantsearch.css@8/themes/reset-min.css" />
+<script src="https://cdn.jsdelivr.net/npm/@meilisearch/instant-meilisearch@0.19.2/dist/instant-meilisearch.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/instantsearch.js@4"></script>
+
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --ink:#1c2530; --muted:#5b6776;
+    --line:#e6e9ee; --accent:#2f6fed; --accent-soft:#eaf1ff;
+    --radius:12px; --shadow:0 1px 3px rgba(20,30,50,.06),0 6px 18px rgba(20,30,50,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  mark{background:#fff3bf;color:inherit;padding:0 .1em;border-radius:3px}
+
+  header{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.85);
+    backdrop-filter:saturate(1.4) blur(8px);border-bottom:1px solid var(--line);}
+  .bar{max-width:1240px;margin:0 auto;padding:14px 20px;display:flex;
+    align-items:center;gap:18px;flex-wrap:wrap}
+  .brand{font-weight:700;font-size:18px;letter-spacing:-.2px;white-space:nowrap}
+  .brand small{display:block;font-weight:500;font-size:12px;color:var(--muted)}
+  #searchbox{flex:1;min-width:260px}
+  .ais-SearchBox-form{position:relative}
+  .ais-SearchBox-input{width:100%;padding:11px 40px 11px 14px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel);font-size:15px;outline:none}
+  .ais-SearchBox-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .ais-SearchBox-submit,.ais-SearchBox-reset{position:absolute;top:0;height:100%;
+    border:0;background:none;cursor:pointer;color:var(--muted);padding:0 12px}
+  .ais-SearchBox-submit{left:auto;right:28px;display:none}
+  .ais-SearchBox-reset{right:4px}
+
+  .layout{max-width:1240px;margin:0 auto;padding:20px;display:grid;
+    grid-template-columns:288px 1fr;gap:22px;align-items:start}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}}
+
+  .sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:78px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:14px 16px}
+  .card h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+
+  .topline{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .ais-Stats-text{color:var(--muted);font-size:13px}
+  .ais-SortBy-select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+
+  /* facets */
+  .ais-RefinementList-list,.ais-HierarchicalMenu-list{list-style:none;margin:0;padding:0}
+  .ais-HierarchicalMenu-list--child{margin-left:14px;border-left:1px solid var(--line);padding-left:8px}
+  .ais-RefinementList-item,.ais-HierarchicalMenu-item{margin:2px 0}
+  .ais-RefinementList-label,.ais-HierarchicalMenu-link{display:flex;align-items:center;gap:8px;
+    padding:4px 6px;border-radius:7px;cursor:pointer;color:var(--ink)}
+  .ais-RefinementList-label:hover,.ais-HierarchicalMenu-link:hover{background:var(--accent-soft)}
+  .ais-HierarchicalMenu-link{justify-content:space-between}
+  .ais-RefinementList-count,.ais-HierarchicalMenu-count{margin-left:auto;background:#eef1f5;
+    color:var(--muted);font-size:11px;padding:1px 7px;border-radius:20px}
+  .ais-RefinementList-checkbox{accent-color:var(--accent);width:15px;height:15px}
+  .ais-RefinementList-searchBox input{width:100%;padding:7px 10px;border:1px solid var(--line);
+    border-radius:8px;margin-bottom:8px;font-size:13px}
+  .ais-RangeInput-form{display:flex;align-items:center;gap:6px}
+  .ais-RangeInput-input{width:72px;padding:6px 8px;border:1px solid var(--line);border-radius:7px}
+  .ais-RangeInput-submit{padding:6px 10px;border:1px solid var(--line);background:#fff;
+    border-radius:7px;cursor:pointer}
+  .ais-ShowMore{margin-top:8px;background:none;border:0;color:var(--accent);cursor:pointer;font-size:13px;padding:0}
+
+  .ais-ClearRefinements-button{width:100%;padding:8px;border:1px solid var(--line);background:#fff;
+    border-radius:8px;cursor:pointer;color:var(--ink)}
+  .ais-ClearRefinements-button--disabled{opacity:.45;cursor:default}
+  .ais-CurrentRefinements{margin-bottom:12px}
+  .ais-CurrentRefinements-list{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0}
+  .ais-CurrentRefinements-item{display:flex;gap:6px;align-items:center;background:var(--accent-soft);
+    border:1px solid #d4e2ff;border-radius:20px;padding:3px 6px 3px 10px;font-size:12px}
+  .ais-CurrentRefinements-delete{border:0;background:none;cursor:pointer;color:var(--accent)}
+
+  /* hits */
+  .ais-Hits-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+  .hit{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 18px}
+  .hit h2{margin:0 0 4px;font-size:16px;line-height:1.35}
+  .hit .meta{color:var(--muted);font-size:13px;margin-bottom:8px}
+  .hit .meta b{color:var(--ink);font-weight:600}
+  .hit .snippet{font-size:13.5px;color:#36424f;max-height:4.4em;overflow:hidden}
+  .badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .badge{font-size:11.5px;padding:2px 9px;border-radius:20px;border:1px solid var(--line);background:#fafbfc;color:var(--muted)}
+  .badge.lcc{background:var(--accent-soft);border-color:#d4e2ff;color:#1f4fbf;font-weight:600}
+  .badge.t-trust{background:#e7f7ec;border-color:#bce8c9;color:#1c7a3c}
+  .badge.t-medium{background:#eef6ff;border-color:#cfe3ff;color:#2b62c9}
+  .badge.t-low{background:#fff6e6;border-color:#ffe2ad;color:#9a6a00}
+  .badge.t-reject{background:#fdecec;border-color:#f6c6c6;color:#b3261e}
+
+  .ais-Pagination-list{list-style:none;display:flex;gap:6px;justify-content:center;margin:24px 0;padding:0;flex-wrap:wrap}
+  .ais-Pagination-link{display:block;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .ais-Pagination-item--selected .ais-Pagination-link{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .ais-Pagination-item--disabled .ais-Pagination-link{opacity:.4}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand">CiNii LCC Explorer<small>3.6M papers · Library of Congress Classification</small></div>
+    <div id="searchbox"></div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="card"><div id="clear"></div></div>
+    <div class="card"><h3>LCC category</h3><div id="lcc"></div></div>
+    <div class="card"><h3>Classification trust</h3><div id="trust"></div></div>
+    <div class="card"><h3>Year</h3><div id="year"></div></div>
+    <div class="card"><h3>Journal</h3><div id="journal"></div></div>
+    <div class="card"><h3>Publisher</h3><div id="publisher"></div></div>
+  </aside>
+
+  <main>
+    <div class="topline">
+      <div id="stats"></div>
+      <div id="sort"></div>
+    </div>
+    <div id="current"></div>
+    <div id="hits"></div>
+    <div id="pagination"></div>
+  </main>
+</div>
+
+<script>
+// ── config — set these to your local Meilisearch ────────────────────────────
+const HOST = "http://localhost:7700";
+const SEARCH_KEY = "PASTE_SEARCH_ONLY_KEY_HERE";  // printed by index_meili.py
+const INDEX = "cinii";
+// ────────────────────────────────────────────────────────────────────────────
+
+const { searchClient } = instantMeiliSearch(HOST, SEARCH_KEY, {
+  primaryKey: "id",
+  meiliSearchParams: { attributesToHighlight: ["title", "abstract"] },
+});
+const { widgets, connectors } = instantsearch;
+const search = instantsearch({ indexName: INDEX, searchClient });
+
+const TRUST_LABEL = { trust: "High (≥0.67)", medium: "Medium (0.57–0.67)",
+                      low: "Low (0.40–0.57)", reject: "Reject (<0.40)", unknown: "Unknown" };
+
+search.addWidgets([
+  widgets.configure({ hitsPerPage: 12, attributesToSnippet: ["abstract:55"] }),
+
+  widgets.searchBox({ container: "#searchbox",
+    placeholder: "Search titles, abstracts, authors, journals…", autofocus: true,
+    showSubmit: false }),
+
+  widgets.stats({ container: "#stats" }),
+
+  widgets.sortBy({ container: "#sort", items: [
+    { label: "Relevance", value: INDEX },
+    { label: "Newest first", value: `${INDEX}:year:desc` },
+    { label: "Most trusted", value: `${INDEX}:pred_centroid_sim:desc` },
+  ]}),
+
+  widgets.clearRefinements({ container: "#clear",
+    templates: { resetLabel: "Clear all filters" } }),
+
+  widgets.currentRefinements({ container: "#current" }),
+
+  widgets.hierarchicalMenu({ container: "#lcc",
+    attributes: ["lcc.lvl0", "lcc.lvl1", "lcc.lvl2"],
+    limit: 20, showMore: true, showMoreLimit: 60 }),
+
+  widgets.refinementList({ container: "#trust", attribute: "trust_tier",
+    sortBy: ["name:asc"],
+    transformItems: items => items.map(i => ({ ...i, label: TRUST_LABEL[i.label] || i.label })) }),
+
+  widgets.rangeInput({ container: "#year", attribute: "year" }),
+
+  widgets.refinementList({ container: "#journal", attribute: "journal",
+    searchable: true, searchablePlaceholder: "Search journals…",
+    limit: 8, showMore: true, showMoreLimit: 30 }),
+
+  widgets.refinementList({ container: "#publisher", attribute: "publisher",
+    searchable: true, searchablePlaceholder: "Search publishers…",
+    limit: 6, showMore: true, showMoreLimit: 30 }),
+
+  widgets.hits({ container: "#hits",
+    templates: {
+      empty: (_, { html }) => html`<div class="empty">No papers match these filters.</div>`,
+      item(hit, { html, components }) {
+        const meta = [];
+        if (hit.journal) meta.push(html`<b>${hit.journal}</b>`);
+        if (hit.year) meta.push(`${hit.year}`);
+        if (hit.authors) meta.push(hit.authors.length > 90 ? hit.authors.slice(0, 90) + "…" : hit.authors);
+        const titleHtml = components.Highlight({ attribute: "title", hit });
+        const title = hit.doi
+          ? html`<a href="https://doi.org/${hit.doi}" target="_blank" rel="noopener">${titleHtml}</a>`
+          : titleHtml;
+        return html`
+          <article class="hit">
+            <h2>${title}</h2>
+            <div class="meta">${meta.map((m, i) => html`${i ? " · " : ""}${m}`)}</div>
+            <div class="snippet">${components.Snippet({ attribute: "abstract", hit })}</div>
+            <div class="badges">
+              ${hit.lcc_label ? html`<span class="badge lcc">${hit.lcc_label}</span>` : ""}
+              ${hit.pred_lcc_div ? html`<span class="badge">${hit.pred_lcc_div}</span>` : ""}
+              <span class="badge t-${hit.trust_tier}">trust: ${TRUST_LABEL[hit.trust_tier] || hit.trust_tier}</span>
+            </div>
+          </article>`;
+      },
+    },
+  }),
+
+  widgets.pagination({ container: "#pagination", padding: 2 }),
+]);
+
+search.start();
+</script>
+</body>
+</html>
