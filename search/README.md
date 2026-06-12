@@ -6,11 +6,33 @@ categories, journal, publisher, year, and the `pred_centroid_sim` **trust tier**
 
 ```
 search/
-  index_meili.py     # stream the classified parquet → Meilisearch
+  make_sample.py     # export a small representative slice (run on the server)
+  index_meili.py     # stream a parquet → Meilisearch
   lcc_names.py       # LCC code → human-readable names (facet labels)
   requirements.txt   # indexer deps (UI is CDN-based, no build)
   web/index.html     # self-contained InstantSearch explorer
 ```
+
+## Recommended: demo on a laptop (no Meilisearch on the server)
+
+Meilisearch only has to run where the *index* lives. For a demo, export a small
+representative sample on the server and do everything else locally.
+
+```bash
+# on the SERVER — small, quick-to-download slice (no embeddings in the parquet)
+python search/make_sample.py \
+    --source classified/classified_v3_300k.parquet \
+    --out cinii_sample.parquet --n 150000 --stratify
+
+# download it
+scp server:/path/to/cinii_sample.parquet .
+
+# locally: steps 1–3 below, but point the indexer at the sample
+python search/index_meili.py --source cinii_sample.parquet --index cinii
+```
+
+A 150k stratified sample indexes in ~2 min, exercises every facet, and is a
+faithful demo. The full corpus works identically — just bigger.
 
 ## 1. Run Meilisearch locally
 
