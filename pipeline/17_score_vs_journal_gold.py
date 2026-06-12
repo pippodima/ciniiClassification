@@ -60,11 +60,22 @@ TIERS = [
 ]
 
 
-def acc(pred: pd.Series, gold: pd.Series) -> float:
-    m = gold.notna() & (gold.astype(str).str.len() > 0)
-    if m.sum() == 0:
-        return float("nan")
-    return float((pred[m].astype(str) == gold[m].astype(str)).mean())
+def membership(pred: pd.Series, goldstr: pd.Series) -> pd.Series:
+    """
+    Bucket-aware correctness. gold value may be a single code ("QC") or a
+    pipe-separated BUCKET of acceptable codes ("QC|TK"). Returns a bool Series:
+    True where pred is in the bucket (gold non-empty). Single codes behave as
+    plain equality, so this is backward-compatible with non-bucket gold files.
+    """
+    cache = {g: set(str(g).split("|")) for g in goldstr.dropna().unique()}
+    return pd.Series(
+        [bool(g) and (str(p) in cache.get(g, set())) for p, g in zip(pred, goldstr)],
+        index=pred.index)
+
+
+def acc_of(ok: pd.Series, mask: pd.Series | None = None) -> float:
+    s = ok if mask is None else ok[mask]
+    return float(s.mean()) if len(s) else float("nan")
 
 
 def main():
@@ -113,18 +124,24 @@ def main():
     if len(df) == 0:
         log("  ⚠ no matches — check that gold journals exist in the parquet");
         (out_dir / "gold_score.txt").write_text("\n".join(lines)); return
+    bucketed = df["gold_lcc_sub"].str.contains(r"\|").any()
+    if bucketed:
+        log("  (BUCKET mode: gold_lcc_sub holds pipe-separated acceptable codes)")
     log("")
 
+    # bucket-aware correctness columns
+    df["ok_sub"]  = membership(df["pred_lcc"],      df["gold_lcc_sub"])
+    df["ok_main"] = membership(df["pred_lcc_main"], df["gold_lcc_main"])
+    df["ok_div"]  = membership(df["pred_lcc_div"],  df["gold_lcc_div"])
+
     # ── overall accuracy ───────────────────────────────────────────────────────
-    a_main = acc(df["pred_lcc_main"], df["gold_lcc_main"])
-    a_sub  = acc(df["pred_lcc"],      df["gold_lcc_sub"])
-    a_div  = acc(df["pred_lcc_div"],  df["gold_lcc_div"])
-    n_div  = (df["gold_lcc_div"] != "").sum()
+    n_div = (df["gold_lcc_div"] != "").sum()
     log("-" * 70)
     log("OVERALL paper-weighted accuracy (prediction vs journal-gold):")
-    log(f"  main class  (Q/R/T/…) : {a_main:.3f}   n={len(df):,}")
-    log(f"  subclass    (QD/RC/…) : {a_sub:.3f}   n={len(df):,}")
-    log(f"  division    (QD411/…) : {a_div:.3f}   n={n_div:,}  (where gold_div filled)")
+    log(f"  main class  (Q/R/T/…) : {acc_of(df['ok_main']):.3f}   n={len(df):,}")
+    log(f"  subclass    (QD/RC/…) : {acc_of(df['ok_sub']):.3f}   n={len(df):,}")
+    log(f"  division    (QD411/…) : {acc_of(df['ok_div'], df['gold_lcc_div']!=''):.3f}"
+        f"   n={n_div:,}  (where gold_div filled)")
     log("")
 
     # ── accuracy by trust tier (the payoff) ────────────────────────────────────
@@ -133,12 +150,11 @@ def main():
     log(f"  {'tier':<22}{'n_papers':>12}{'% corpus':>10}{'acc_sub':>10}{'acc_main':>10}")
     sim = df[args.sim_col]
     for name, lo, hi in TIERS:
-        seg = df[(sim >= lo) & (sim < hi)]
-        if len(seg) == 0:
+        m = (sim >= lo) & (sim < hi)
+        if m.sum() == 0:
             continue
-        log(f"  {name:<22}{len(seg):>12,}{len(seg)/len(df):>9.1%}"
-            f"{acc(seg['pred_lcc'], seg['gold_lcc_sub']):>10.3f}"
-            f"{acc(seg['pred_lcc_main'], seg['gold_lcc_main']):>10.3f}")
+        log(f"  {name:<22}{int(m.sum()):>12,}{m.mean():>9.1%}"
+            f"{acc_of(df['ok_sub'], m):>10.3f}{acc_of(df['ok_main'], m):>10.3f}")
     log("  → if acc rises with the tier, pred_centroid_sim is a valid trust dial")
     log("")
 
@@ -150,8 +166,8 @@ def main():
             "n_papers": len(sub),
             "gold_sub": sub["gold_lcc_sub"].iloc[0],
             "pred_dominant_sub": sub["pred_lcc"].value_counts().index[0],
-            "acc_sub": (sub["pred_lcc"] == sub["gold_lcc_sub"]).mean(),
-            "acc_main": (sub["pred_lcc_main"] == sub["gold_lcc_main"]).mean(),
+            "acc_sub": sub["ok_sub"].mean(),
+            "acc_main": sub["ok_main"].mean(),
         })
     pj = pd.DataFrame(rows).sort_values("acc_sub")
     pj.to_csv(out_dir / "per_journal_score.csv", index=False)
@@ -165,8 +181,8 @@ def main():
             f"{str(r.journal)[:42]}")
     log("")
 
-    # ── systematic confusions ──────────────────────────────────────────────────
-    conf = (df[df["pred_lcc"] != df["gold_lcc_sub"]]
+    # ── systematic confusions (predictions outside the gold bucket) ─────────────
+    conf = (df[~df["ok_sub"]]
             .groupby(["gold_lcc_sub", "pred_lcc"]).size()
             .reset_index(name="n_papers").sort_values("n_papers", ascending=False))
     conf.to_csv(out_dir / "confusion_sub.csv", index=False)

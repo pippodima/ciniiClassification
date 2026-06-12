@@ -226,6 +226,67 @@ GOLD_SUB = {
 }
 
 
+# ── BUCKET policy ────────────────────────────────────────────────────────────
+# Tight, taxonomy-driven adjacency: a prediction in {primary} ∪ ADJ[primary] is
+# accepted. Asymmetric on purpose (a microbiology journal may publish clinical
+# work → QR accepts RC; but core-medicine RC stays strict so it can't inflate).
+# Defined from LCC structure / journal scope — NOT from model predictions.
+ADJ = {
+    "QC": {"TK"},          # applied physics ↔ electronics
+    "QP": {"RC", "QH"},    # physiology ↔ medicine ↔ biology
+    "QH": {"QP"},          # biology ↔ physiology
+    "QR": {"RC"},          # microbiology/immunology ↔ medicine
+    "QB": {"QC"},          # astronomy ↔ physics (space physics)
+    "QK": {"QH"},          # botany ↔ biology
+    "QL": {"QH"},          # zoology ↔ biology
+    "QE": {"QC", "GB"},    # geology ↔ physics/geophysics ↔ phys-geography
+    "GB": {"QE"},
+    "QA": {"TK"},          # math/CS ↔ electronics
+    "RM": {"RC", "QP"},    # pharmacology ↔ medicine/physiology
+    "RD": {"RC"}, "RK": {"RC"}, "RF": {"RC"}, "RB": {"RC"}, "R": {"RC"},
+    "TA": {"TK", "TN"},    # materials/mech-eng ↔ electronics ↔ metallurgy
+    "TK": {"TA", "QA"}, "TN": {"TA"}, "TJ": {"TA"},
+    # QD and RC kept strict (no expansion): dominant classes, don't inflate.
+}
+# Vocab-gap journals: primary code absent from the model's 35-subclass vocab, so
+# the bucket is its nearest IN-VOCAB neighbours (the model can't do better).
+JOURNAL_BUCKET = {
+    "Journal of the American Ceramic Society": {"TN", "TA", "QD"},
+    "Journal of the Ceramic Society of Japan": {"TN", "TA", "QD"},
+    "JOURNAL OF CHEMICAL ENGINEERING OF JAPAN": {"QD", "TA"},
+    "AIChE Journal": {"QD", "TA"},
+    "Biotechnology and Bioengineering": {"QP", "QD"},
+    "Journal of Food Science": {"QD", "QP"},
+    "Journal of the American Oil Chemists' Society": {"QD", "QP"},
+    "Sen'i Gakkaishi": {"QD", "TA"},                       # fiber/textile (TS)
+    "Journal of Veterinary Medical Science": {"RC", "QR", "S"},  # vet (SF)
+    "Pediatrics": {"RC"},                                   # (RJ)
+    "Journal of the Society of Naval Architects of Japan": {"TA"},  # (VM)
+    "PROCEEDINGS OF HYDRAULIC ENGINEERING": {"TA", "GB"},  # (TC)
+    "Journal of Geophysical Research: Oceans": {"GB", "QE", "QH"},  # (GC)
+}
+
+
+def write_bucket_variant(template: pd.DataFrame, out: Path):
+    df = template.copy()
+    def bucket_for(j):
+        if j in JOURNAL_BUCKET:
+            return JOURNAL_BUCKET[j]
+        p = GOLD_SUB.get(j, "")
+        if not p:
+            return set()
+        return {p} | ADJ.get(p, set())
+    buckets = df["journal"].map(bucket_for)
+    df["gold_lcc_sub"]  = buckets.map(lambda s: "|".join(sorted(s)))
+    df["gold_lcc_main"] = buckets.map(lambda s: "|".join(sorted({c[0] for c in s})))
+    df["gold_lcc_div"]  = ""
+    df.to_csv(out, index=False)
+    labeled = (df["gold_lcc_sub"] != "").sum()
+    sizes = buckets[buckets.map(len) > 0].map(len)
+    print(f"  {out.name}: {labeled}/{len(df)} labeled  "
+          f"(bucket size mean {sizes.mean():.1f}, max {sizes.max()})")
+
+
 def write_variant(template: pd.DataFrame, applied_physics_sub: str, out: Path):
     df = template.copy()
     sub_map = dict(GOLD_SUB)
@@ -255,6 +316,7 @@ def main():
     print(f"  template: {len(tmpl)} journals")
     write_variant(tmpl, "QC", out_dir / "journal_gold_QC.csv")
     write_variant(tmpl, "TK", out_dir / "journal_gold_TK.csv")
+    write_bucket_variant(tmpl, out_dir / "journal_gold_BUCKET.csv")
     print("  → score each with 17_score_vs_journal_gold.py and compare")
 
 
