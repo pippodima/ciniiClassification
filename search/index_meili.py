@@ -126,6 +126,9 @@ def main():
     ap.add_argument("--key", default=os.getenv("MEILI_MASTER_KEY", ""))
     ap.add_argument("--batch-size", type=int, default=20000)
     ap.add_argument("--limit", type=int, default=None, help="cap rows (demo subset)")
+    ap.add_argument("--abstract-chars", type=int, default=0,
+                    help="truncate abstracts to N chars to shrink the index "
+                         "(0 = full; ~800 is a good demo value on a small disk)")
     args = ap.parse_args()
 
     import meilisearch
@@ -164,6 +167,8 @@ def main():
                               _clean_str(r.get("pred_lcc")),
                               _clean_str(r.get("pred_lcc_div")))
             abstract = _clean_str(r.get("clean_abstract")) or _clean_str(r.get("abstract"))
+            if args.abstract_chars and len(abstract) > args.abstract_chars:
+                abstract = abstract[:args.abstract_chars].rsplit(" ", 1)[0] + "…"
             doc = {
                 "id": doc_id,
                 "title": title,
