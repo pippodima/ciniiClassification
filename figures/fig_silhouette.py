@@ -33,15 +33,30 @@ def main():
     ys = [r["score"] for r in allr]
 
     fig, ax = plt.subplots(figsize=(6.8, 4.3))
-    ax.scatter(xs, ys, s=36, color="#2f6fed", alpha=.7, edgecolors="white", linewidths=.5)
-    ax.scatter([best["n_clusters"]], [best["score"]], s=160, facecolors="none",
-               edgecolors="#2e8b57", lw=2.2, zorder=5)
-    ax.annotate(f"selected\nk={best['n_clusters']}, sil={best['score']:.3f}\n"
-                f"(mcs={best['mcs']}, ms={best['ms']})",
-                (best["n_clusters"], best["score"]),
-                xytext=(12, -6), textcoords="offset points", color="#2e8b57", fontsize=9)
+    ax.scatter(xs, ys, s=42, color="#2f6fed", alpha=.75, edgecolors="white",
+               linewidths=.5, label="grid-search configs")
+    ax.scatter([best["n_clusters"]], [best["score"]], s=170, facecolors="none",
+               edgecolors="#2e8b57", lw=2.2, zorder=5, label="selected config")
+
+    # headroom so the top point + annotation don't collide with the title
+    ymin, ymax = min(ys), max(ys)
+    pad = (ymax - ymin) * 0.25 or 0.01
+    ax.set_ylim(ymin - pad, ymax + pad)
+    xmin, xmax = min(xs), max(xs)
+    ax.set_xlim(xmin - (xmax - xmin) * .08, xmax + (xmax - xmin) * .12)
+
+    # place the label in open space (lower area) with a leader line to the point
+    ax.annotate(
+        f"selected: k={best['n_clusters']}, sil={best['score']:.3f}\n"
+        f"(mcs={best['mcs']}, ms={best['ms']})",
+        xy=(best["n_clusters"], best["score"]),
+        xytext=(0.55, 0.18), textcoords="axes fraction",
+        color="#2e8b57", fontsize=9,
+        arrowprops=dict(arrowstyle="->", color="#2e8b57", lw=1.2))
+
     ax.set(xlabel="number of clusters", ylabel="silhouette score",
-           title="v3_300k HDBSCAN grid search: cluster quality vs cluster count")
+           title="v3_300k HDBSCAN grid search: silhouette vs cluster count")
+    ax.legend(loc="lower left", fontsize=9, framealpha=.9)
     ax.grid(alpha=.3)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout(); fig.savefig(args.out, dpi=300, bbox_inches="tight")
