@@ -20,6 +20,10 @@ def main():
     parser.add_argument("--input",  required=True)
     parser.add_argument("--sample", type=int, default=5000)
     parser.add_argument("--model",  default="Qwen/Qwen3-Embedding-0.6B")
+    parser.add_argument("--plot",   default=None, metavar="PNG",
+                        help="also save a token-length histogram to this path")
+    parser.add_argument("--cap",    type=int, default=768,
+                        help="max-length cap to mark on the histogram (default 768)")
     args = parser.parse_args()
 
     print(f"Loading tokenizer: {args.model} ...")
@@ -67,6 +71,24 @@ def main():
         truncated = (lengths > cap).mean()
         print(f"  > {cap:4d} tokens (would be truncated) : {truncated:.2%}")
     print("=" * 45)
+
+    if args.plot:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(7, 4.2))
+        clip = np.minimum(lengths, 1200)
+        ax.hist(clip, bins=60, color="#2f6fed", alpha=.85)
+        ax.axvline(args.cap, color="#d9534f", ls="--", lw=1.5,
+                   label=f"cap = {args.cap}  ({(lengths > args.cap).mean():.1%} truncated)")
+        ax.axvline(float(np.median(lengths)), color="#2e8b57", ls=":", lw=1.5,
+                   label=f"median = {np.median(lengths):.0f}")
+        ax.set(xlabel="tokens (title + abstract, clipped at 1200)",
+               ylabel="documents", title="Token-length distribution")
+        ax.legend(); ax.grid(alpha=.3)
+        Path(args.plot).parent.mkdir(parents=True, exist_ok=True)
+        fig.tight_layout(); fig.savefig(args.plot, dpi=300, bbox_inches="tight")
+        print(f"  histogram → {args.plot}")
 
 if __name__ == "__main__":
     main()
