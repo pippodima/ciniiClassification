@@ -35,6 +35,9 @@ def main():
     ap.add_argument("--gold", default="reports/journal_validation_v3_300k/journal_gold_TK.csv")
     ap.add_argument("--out", default="reports/thesis_figures/fig27_confusion.png")
     ap.add_argument("--top", type=int, default=18, help="most frequent gold subclasses")
+    ap.add_argument("--order", choices=["code", "freq"], default="code",
+                    help="row/col order: 'code' groups by LCC main class so similar "
+                         "disciplines sit adjacent (default); 'freq' = by volume")
     args = ap.parse_args()
     plt.rcParams.update({"font.family": "serif", "font.size": 10})
 
@@ -55,6 +58,11 @@ def main():
     print(f"  {len(df):,} papers matched to gold journals")
 
     classes = df["gold"].value_counts().head(args.top).index.tolist()
+    if args.order == "code":
+        # sort by LCC code → groups by main-class letter (Q*, R*, T*, …) so that
+        # semantically adjacent subclasses are neighbours and within-discipline
+        # confusions form blocks near the diagonal.
+        classes = sorted(classes)
     sub = df[df["gold"].isin(classes)]
     ct = pd.crosstab(sub["gold"], sub["pred"]).reindex(index=classes)
     ct = ct.reindex(columns=classes, fill_value=0)             # square over gold classes
@@ -64,8 +72,15 @@ def main():
     im = ax.imshow(norm.values, cmap="Blues", vmin=0, vmax=1)
     ax.set_xticks(range(len(classes))); ax.set_xticklabels(classes, rotation=90)
     ax.set_yticks(range(len(classes))); ax.set_yticklabels(classes)
+    # thin separators between LCC main-class groups (only meaningful for code order)
+    if args.order == "code":
+        mains = [c[0] for c in classes]
+        for k in range(1, len(classes)):
+            if mains[k] != mains[k - 1]:
+                ax.axhline(k - 0.5, color="#b04632", lw=0.8)
+                ax.axvline(k - 0.5, color="#b04632", lw=0.8)
     ax.set(xlabel="predicted subclass", ylabel="journal-gold subclass",
-           title="Confusion: P(predicted | journal-gold), top subclasses")
+           title="Confusion: P(predicted | journal-gold), grouped by LCC main class")
     for i in range(len(classes)):
         for j in range(len(classes)):
             v = norm.values[i, j]
