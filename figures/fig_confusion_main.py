@@ -75,24 +75,28 @@ def main():
     df = pd.concat(parts, ignore_index=True)
     print(f"  {len(df):,} papers matched to gold journals")
 
-    pred_mains = set(df["pred"].unique())                            # what the model can output
+    EPS = 0.02   # a gold main with diagonal below this has no in-vocabulary class
+
+    def build(classes):
+        supp = df["gold"].value_counts().reindex(classes)
+        ct = pd.crosstab(df["gold"], df["pred"]).reindex(index=classes)
+        ct = ct.reindex(columns=classes, fill_value=0)        # square over gold mains
+        return supp, ct.div(supp, axis=0)
+
     classes = sorted(df["gold"].value_counts().index.tolist())
-    gap = [c for c in classes if c not in pred_mains]                # unwinnable (no in-vocab class)
+    supp, norm = build(classes)
+    diag = np.diag(norm.values)
+    # vocabulary-gap rows: the model never lands on the correct main class because the
+    # gold subclass (e.g. SF, VM) is outside its 35-class output space → empty diagonal.
+    gap = [classes[i] for i in range(len(classes)) if diag[i] < EPS]
 
     if args.exclude_vocab_gap:
         classes = [c for c in classes if c not in gap]
-        df = df[df["gold"].isin(classes)]
+        supp, norm = build(classes)
+        diag = np.diag(norm.values)
         gap = []
 
-    supp = df["gold"].value_counts().reindex(classes)
-    # square matrix over the gold main classes (off-diagonal mass to non-gold
-    # mains is negligible and only adds empty columns)
-    ct = pd.crosstab(df["gold"], df["pred"]).reindex(index=classes)
-    ct = ct.reindex(columns=classes, fill_value=0)
-    norm = ct.div(supp, axis=0)
-
     # recalls
-    diag = np.diag(norm.values)
     w = supp.values
     rec_all = float(np.average(diag, weights=w))
     inv = [i for i, c in enumerate(classes) if c not in gap]
