@@ -56,7 +56,7 @@ SUB: dict[str, str] = {
     "QC": "Physics",
     "QD": "Chemistry",
     "QE": "Geology and Earth Sciences",
-    "QH": "Natural History and Biology",
+    "QH": "Biology",
     "QK": "Botany",
     "QL": "Zoology",
     "QP": "Physiology",
