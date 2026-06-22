@@ -29,7 +29,6 @@ import pyarrow.parquet as pq
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 
 # main-class full names (LCC)
 MAIN = {
@@ -110,9 +109,6 @@ def main():
     ax.set_yticks(range(n))
     ax.set_yticklabels([f"{c} — {MAIN.get(c, '')}{dagger.get(c, '')}" for c in classes],
                        fontsize=9)
-    for lbl, c in zip(ax.get_yticklabels(), classes):
-        if c in gap:
-            lbl.set_color("#c07a2b")
 
     for i in range(n):
         for j in range(n):
@@ -120,16 +116,6 @@ def main():
             if v >= 0.01:
                 ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=9,
                         color="white" if v > .55 else "#333")
-
-    # highlight the diagonal cells (correct = recall)
-    for i in range(n):
-        ax.add_patch(Rectangle((i - .5, i - .5), 1, 1, fill=False,
-                               edgecolor="#d9534f", lw=1.8))
-    # dashed outline on vocabulary-gap rows (structural zero diagonal)
-    for c in gap:
-        i = classes.index(c)
-        ax.add_patch(Rectangle((-.5, i - .5), n, 1, fill=False,
-                               edgecolor="#c07a2b", lw=1.4, ls=(0, (4, 3))))
 
     ax.set_xlabel("predicted main class")
     ax.set_ylabel("journal-gold main class")
