@@ -60,3 +60,11 @@ thesis/
 cinii_sample.parquet
 extracted.csv
 lcc_mapping_corrected_copy.csv
+
+# ── Training-run data (keep small provenance, ignore the parquet blobs) ──────
+training_runs/**/*.parquet
+!training_runs/**/cluster_metadata.parquet
+reports/thesis_figures/old/
+
+# ── v3 experiment dir (its artefacts are published via models/release/) ──────
+models/v3_300k/

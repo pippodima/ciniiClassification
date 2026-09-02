@@ -1,0 +1,25 @@
+{
+  "sample": {
+    "done": true,
+    "ts": "2026-06-08T23:50:37.109833",
+    "n_docs": 300000
+  },
+  "embed": {
+    "done": true,
+    "ts": "2026-06-08T23:50:37.110267",
+    "n_docs": 300000,
+    "skipped": "source had embeddings"
+  },
+  "cluster": {
+    "done": true,
+    "ts": "2026-06-09T01:04:33.727198",
+    "n_clusters": 166,
+    "n_outliers": 150184
+  },
+  "train": {
+    "done": true,
+    "ts": "2026-06-10T23:11:49.869216",
+    "model_a_bal": 0.9644,
+    "model_b_bal": 0.9533
+  }
+}
