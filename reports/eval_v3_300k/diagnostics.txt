@@ -1,0 +1,60 @@
+======================================================================
+EVALUATION & LEAKAGE DIAGNOSTICS
+======================================================================
+  run-dir   : training_runs/v3_300k
+  model-dir : models/v3_300k
+  divisions : 163   subclasses : 35
+  train rows: 118,285   val rows: 29,572
+
+[Model B] reconstructed val  acc=0.9607  bal-acc=0.9533
+          (metrics.json said acc=0.9607, bal=0.9533)
+
+----------------------------------------------------------------------
+A. BASELINES ON THE SAME VAL SPLIT
+   If a trivial classifier ~matches the MLP, the labels were already
+   encoded in the embedding geometry → the MLP learned almost nothing
+   beyond reproducing the clustering.
+   nearest-centroid acc = 0.8552   (MLP acc = 0.9607)
+   1-NN acc             = 0.9742
+
+----------------------------------------------------------------------
+B. TRAIN/VAL NEAR-DUPLICATE LEAKAGE
+   (train subsampled to 60,000 rows for the scan)
+   val rows with a train neighbour ≥ 0.999: 0.21%
+   val rows with a train neighbour ≥ 0.99: 0.27%
+   val rows with a train neighbour ≥ 0.95: 0.37%
+   median val→train max-sim = 0.6954
+
+----------------------------------------------------------------------
+C. COVERAGE (what the metrics DON'T see)
+   clustered sample size      : 298,041
+   HDBSCAN outliers (cid=-1)  : 150,184  (50.4%)
+   used for train+val         : 147,857  (49.6%)
+   excluded (outlier+skipped) : 150,184  (50.4%)
+   → On the full 3.6M corpus, most docs resemble the EXCLUDED set,
+     for which we have NO measured accuracy.
+
+D. OUTLIER OVER-CONFIDENCE (held-out cid=-1, no ground truth)
+   mean conf  in-cluster val = 0.992
+   mean conf  outliers       = 0.929
+   outliers predicted with conf>0.9 = 79.2%
+   (high confidence on points the clustering called noise is a
+    sign the softmax is not trustworthy off-distribution)
+
+----------------------------------------------------------------------
+WEAKEST 15 DIVISIONS BY F1 (Model B, val)
+   QD411          F1=0.863  support=48
+   QC482          F1=0.865  support=55
+   QP551          F1=0.868  support=149
+   QC665          F1=0.869  support=47
+   QH455          F1=0.876  support=45
+   QD878          F1=0.882  support=48
+   QH600          F1=0.889  support=55
+   QA76.87        F1=0.891  support=49
+   GN50           F1=0.901  support=77
+   RC268.5        F1=0.902  support=53
+   QH603.C95      F1=0.903  support=103
+   QR175          F1=0.904  support=70
+   RM301.5        F1=0.907  support=157
+   QP141          F1=0.911  support=51
+   RC692          F1=0.911  support=46

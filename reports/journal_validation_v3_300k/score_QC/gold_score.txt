@@ -1,0 +1,59 @@
+======================================================================
+CLASSIFIER vs INDEPENDENT JOURNAL→LCC GOLD MAP
+======================================================================
+  gold journals total : 200
+  labeled (scored)    : 187
+  blank/multidisc.    : 13  (excluded)
+
+  papers matched to a labeled journal : 1,416,940
+
+----------------------------------------------------------------------
+OVERALL paper-weighted accuracy (prediction vs journal-gold):
+  main class  (Q/R/T/…) : 0.742   n=1,416,940
+  subclass    (QD/RC/…) : 0.576   n=1,416,940
+  division    (QD411/…) : nan   n=0  (where gold_div filled)
+
+----------------------------------------------------------------------
+ACCURACY BY pred_centroid_sim TIER  (subclass level)
+  tier                      n_papers  % corpus   acc_sub  acc_main
+  reject  (<0.40)              2,288     0.2%     0.230     0.500
+  low     (0.40-0.57)        220,010    15.5%     0.416     0.656
+  medium  (0.57-0.67)        694,374    49.0%     0.576     0.748
+  trust   (>=0.67)           500,268    35.3%     0.648     0.773
+  → if acc rises with the tier, pred_centroid_sim is a valid trust dial
+
+----------------------------------------------------------------------
+WORST-SCORING labeled journals (acc_sub, n>=100) — model vs gold:
+  acc=0.00  n= 2,876  gold=TP    pred=TA    ←disagree  AIChE Journal
+  acc=0.00  n= 4,062  gold=TP    pred=QP    ←disagree  Biotechnology and Bioengineering
+  acc=0.00  n= 8,707  gold=TP    pred=TN    ←disagree  Journal of the American Ceramic Society
+  acc=0.00  n= 7,557  gold=SF    pred=RC    ←disagree  Journal of Veterinary Medical Science
+  acc=0.00  n= 4,810  gold=GC    pred=GB    ←disagree  Journal of Geophysical Research: Oceans
+  acc=0.00  n= 3,923  gold=TP    pred=QD    ←disagree  Journal of Food Science
+  acc=0.00  n= 6,079  gold=TP    pred=QD    ←disagree  JOURNAL OF CHEMICAL ENGINEERING OF JAPAN
+  acc=0.00  n= 2,888  gold=TP    pred=QD    ←disagree  Journal of the American Oil Chemists' Soci
+  acc=0.00  n= 3,669  gold=TC    pred=GB    ←disagree  PROCEEDINGS OF HYDRAULIC ENGINEERING
+  acc=0.00  n= 5,161  gold=RJ    pred=RC    ←disagree  Pediatrics
+  acc=0.00  n= 3,321  gold=TS    pred=QD    ←disagree  Sen'i Gakkaishi
+  acc=0.00  n= 3,320  gold=R     pred=RC    ←disagree  Medical Physics
+  acc=0.00  n= 3,051  gold=R     pred=RC    ←disagree  Magnetic Resonance in Medicine
+  acc=0.00  n= 3,458  gold=VM    pred=TA    ←disagree  Journal of the Society of Naval Architects
+  acc=0.00  n= 6,450  gold=TP    pred=TN    ←disagree  Journal of the Ceramic Society of Japan
+
+----------------------------------------------------------------------
+BIGGEST SYSTEMATIC DISAGREEMENTS (gold_sub → pred_sub, by volume):
+  110,874  gold=QC    → pred=TK   
+   40,955  gold=QP    → pred=RC   
+   18,046  gold=QC    → pred=QD   
+   16,125  gold=QP    → pred=QH   
+   14,453  gold=QR    → pred=RC   
+   13,060  gold=RC    → pred=QR   
+   11,583  gold=RC    → pred=QP   
+   10,884  gold=QC    → pred=QB   
+   10,742  gold=QH    → pred=QP   
+   10,506  gold=TP    → pred=QD   
+   10,058  gold=QD    → pred=TK   
+    9,719  gold=QR    → pred=QP   
+    9,209  gold=QP    → pred=QR   
+    8,973  gold=RM    → pred=RC   
+    8,801  gold=TK    → pred=QA   

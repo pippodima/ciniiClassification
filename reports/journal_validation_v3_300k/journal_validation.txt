@@ -1,0 +1,90 @@
+======================================================================
+JOURNAL / PUBLISHER PROXY-GROUND-TRUTH VALIDATION
+======================================================================
+  input : classified/classified_v3_300k.parquet
+  docs  : 3,602,151   level: pred_lcc   min-papers: 20
+
+  journal    coverage = 98.9%   distinct = 38,916
+  publisher  coverage = 99.4%   distinct = 11,611
+
+----------------------------------------------------------------------
+GROUP = journal
+  journals with >= 20 papers: 7,542 (covering 3,458,020 docs = 96.0%)
+  paper-weighted top-LCC PURITY = 0.626   (median per-journal = 0.611)
+  paper-weighted norm. ENTROPY  = 0.426   (0=pure, 1=uniform)
+  >=80% pure journals: 26.2% of journals, 26.6% of their papers
+  paper-weighted LIFT vs random = 16.75×  (>>1 ⇒ predictions track journal; ~1 ⇒ no signal / degenerate)
+  >>> AMI(journal, pred_lcc) = 0.316  [headline; chance-corrected, degeneracy-proof]
+
+  OOD cross-check (split on pred_centroid_sim quartiles):
+    high-sim (>= 0.675): AMI=0.369  purity=0.723
+    low-sim  (<= 0.573): AMI=0.262  purity=0.524
+    → OOD score VALID: high-sim more consistent
+
+  purity by pred_centroid_sim decile (low→high):
+    decile  0  sim~[0.06,0.52]  purity=0.492  n=356,659
+    decile  1  sim~[0.52,0.56]  purity=0.550  n=356,497
+    decile  2  sim~[0.56,0.59]  purity=0.584  n=355,644
+    decile  3  sim~[0.59,0.61]  purity=0.612  n=357,074
+    decile  4  sim~[0.61,0.63]  purity=0.642  n=357,146
+    decile  5  sim~[0.63,0.65]  purity=0.668  n=355,392
+    decile  6  sim~[0.65,0.67]  purity=0.694  n=356,153
+    decile  7  sim~[0.67,0.69]  purity=0.716  n=355,597
+    decile  8  sim~[0.69,0.71]  purity=0.731  n=357,038
+    decile  9  sim~[0.71,0.89]  purity=0.728  n=355,408
+
+  Least-coherent high-volume journals (n>=100, low purity):
+    purity=0.14  n=   562  dom=HD        Risk Analysis
+    purity=0.14  n= 3,246  dom=QH        Science Advances
+    purity=0.14  n=   633  dom=QD        Journal of Home Economics of Japan
+    purity=0.14  n=   243  dom=TA        福井工業大学研究紀要
+    purity=0.15  n=   266  dom=QH        IOP Conference Series: Earth and Environmenta
+    purity=0.15  n= 1,457  dom=TA        Applied Sciences
+    purity=0.16  n=19,355  dom=QH        Nature Communications
+    purity=0.17  n=   112  dom=QP        Practical Pre-School
+    purity=0.17  n=   116  dom=JZ        Social Studies of Science
+    purity=0.17  n=   202  dom=HT        Disasters
+    purity=0.17  n=   132  dom=QC        Proceedings of the Royal Society of London
+    purity=0.18  n=   336  dom=TA        Memoirs of the Faculty of Engineering, Okayam
+
+----------------------------------------------------------------------
+GROUP = publisher
+  publishers with >= 20 papers: 2,155 (covering 3,550,365 docs = 98.6%)
+  paper-weighted top-LCC PURITY = 0.423   (median per-publisher = 0.503)
+  paper-weighted norm. ENTROPY  = 0.565   (0=pure, 1=uniform)
+  >=80% pure journals: 17.2% of publishers, 6.9% of their papers
+  paper-weighted LIFT vs random = 8.59×  (>>1 ⇒ predictions track publisher; ~1 ⇒ no signal / degenerate)
+  >>> AMI(publisher, pred_lcc) = 0.260  [headline; chance-corrected, degeneracy-proof]
+
+  OOD cross-check (split on pred_centroid_sim quartiles):
+    high-sim (>= 0.676): AMI=0.318  purity=0.522
+    low-sim  (<= 0.573): AMI=0.212  purity=0.345
+    → OOD score VALID: high-sim more consistent
+
+  purity by pred_centroid_sim decile (low→high):
+    decile  0  sim~[0.06,0.52]  purity=0.337  n=358,341
+    decile  1  sim~[0.52,0.56]  purity=0.352  n=358,681
+    decile  2  sim~[0.56,0.59]  purity=0.368  n=357,510
+    decile  3  sim~[0.59,0.61]  purity=0.387  n=359,337
+    decile  4  sim~[0.61,0.63]  purity=0.412  n=357,732
+    decile  5  sim~[0.63,0.65]  purity=0.438  n=357,723
+    decile  6  sim~[0.65,0.67]  purity=0.463  n=357,933
+    decile  7  sim~[0.67,0.69]  purity=0.491  n=358,400
+    decile  8  sim~[0.69,0.71]  purity=0.514  n=357,860
+    decile  9  sim~[0.72,0.95]  purity=0.555  n=357,524
+
+  Least-coherent high-volume publishers (n>=100, low purity):
+    purity=0.11  n=   975  dom=QD        Taylor & Francis
+    purity=0.11  n=   105  dom=QD        Taylor & Francis Group
+    purity=0.12  n=   314  dom=TA        福井工業大学
+    purity=0.13  n= 2,096  dom=QH        Oxford University Press
+    purity=0.14  n=   633  dom=QD        The Japan Society of Home Economics
+    purity=0.15  n= 8,231  dom=QD        Elsevier
+    purity=0.15  n=   246  dom=P         Canadian Center of Science and Education
+    purity=0.15  n=   234  dom=QA        Springer-Verlag
+    purity=0.15  n= 1,982  dom=RC        Elsevier BV
+    purity=0.16  n=49,733  dom=RC        Cambridge University Press (CUP)
+    purity=0.16  n=   125  dom=QE        Resources Economics Research Board
+    purity=0.16  n=   250  dom=QH        Springer Netherlands
+
+  journal→LCC map → reports/journal_validation_v3_300k/journal_lcc_map.csv

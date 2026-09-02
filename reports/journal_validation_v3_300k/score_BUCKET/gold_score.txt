@@ -1,0 +1,60 @@
+======================================================================
+CLASSIFIER vs INDEPENDENT JOURNAL→LCC GOLD MAP
+======================================================================
+  gold journals total : 200
+  labeled (scored)    : 187
+  blank/multidisc.    : 13  (excluded)
+
+  papers matched to a labeled journal : 1,416,940
+  (BUCKET mode: gold_lcc_sub holds pipe-separated acceptable codes)
+
+----------------------------------------------------------------------
+OVERALL paper-weighted accuracy (prediction vs journal-gold):
+  main class  (Q/R/T/…) : 0.934   n=1,416,940
+  subclass    (QD/RC/…) : 0.786   n=1,416,940
+  division    (QD411/…) : nan   n=0  (where gold_div filled)
+
+----------------------------------------------------------------------
+ACCURACY BY pred_centroid_sim TIER  (subclass level)
+  tier                      n_papers  % corpus   acc_sub  acc_main
+  reject  (<0.40)              2,288     0.2%     0.529     0.792
+  low     (0.40-0.57)        220,010    15.5%     0.655     0.899
+  medium  (0.57-0.67)        694,374    49.0%     0.781     0.937
+  trust   (>=0.67)           500,268    35.3%     0.851     0.945
+  → if acc rises with the tier, pred_centroid_sim is a valid trust dial
+
+----------------------------------------------------------------------
+WORST-SCORING labeled journals (acc_sub, n>=100) — model vs gold:
+  acc=0.03  n= 9,035  gold=QC|TK pred=QB    ←disagree  Journal of Geophysical Research: Space Phy
+  acc=0.04  n= 3,856  gold=RC    pred=RK    ←disagree  Journal of Bone and Mineral Research
+  acc=0.17  n= 2,905  gold=QP|RC|RM pred=QR    ←disagree  CHEMOTHERAPY
+  acc=0.24  n= 5,127  gold=QH|QP pred=QK    ←disagree  CYTOLOGIA
+  acc=0.27  n= 2,860  gold=RC    pred=RM    ←disagree  Journal of the American Geriatrics Society
+  acc=0.35  n= 2,945  gold=QD    pred=QD      Nanoscale
+  acc=0.36  n= 3,309  gold=QA|TA|TK pred=TA    ←disagree  Journal of Nuclear Science and Technology
+  acc=0.37  n= 3,301  gold=QH|QP pred=QL    ←disagree  Molecular Ecology
+  acc=0.37  n= 4,000  gold=QH|QP pred=RC    ←disagree  Journal of Cellular Physiology
+  acc=0.43  n= 8,069  gold=RC    pred=RC      Okayama Igakkai Zasshi (Journal of Okayama
+  acc=0.45  n= 5,161  gold=RC    pred=RC      Pediatrics
+  acc=0.45  n= 2,875  gold=QA|TA|TK pred=TK    ←disagree  Electrical Engineering in Japan
+  acc=0.46  n= 5,019  gold=QP|RC|RM pred=RD    ←disagree  Journal of Physical Therapy Science
+  acc=0.48  n= 9,650  gold=RC    pred=RC      The Tohoku Journal of Experimental Medicin
+  acc=0.48  n= 3,431  gold=RB|RC pred=RC    ←disagree  Clinical Chemistry
+
+----------------------------------------------------------------------
+BIGGEST SYSTEMATIC DISAGREEMENTS (gold_sub → pred_sub, by volume):
+   18,046  gold=QC|TK → pred=QD   
+   13,762  gold=RC    → pred=QR   
+   11,813  gold=RC    → pred=QP   
+   10,884  gold=QC|TK → pred=QB   
+   10,058  gold=QD    → pred=TK   
+    9,719  gold=QR|RC → pred=QP   
+    9,209  gold=QH|QP|RC → pred=QR   
+    8,403  gold=QC|TK → pred=TA   
+    8,301  gold=QH|QP|RC → pred=QD   
+    6,829  gold=QA|TA|TK → pred=QD   
+    6,564  gold=QC|TK → pred=TN   
+    6,486  gold=QD    → pred=RS   
+    6,446  gold=QH|QP → pred=QK   
+    6,266  gold=RC    → pred=RK   
+    5,884  gold=QD    → pred=QP   

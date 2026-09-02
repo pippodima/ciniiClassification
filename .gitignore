@@ -55,3 +55,8 @@ env/
 PROJECT_DIARY.md
 CLAUDE.md
 thesis/
+
+# ── Local scratch at repo root (never publish) ───────────────────────────────
+cinii_sample.parquet
+extracted.csv
+lcc_mapping_corrected_copy.csv
