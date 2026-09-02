@@ -1,0 +1,162 @@
+==============================================================
+  DATA EXPLORATION SUMMARY
+  source : data/cleaned/english_FullDatasetV2.parquet
+==============================================================
+  Rows      : 200,000
+  Columns   : 22  —  ['file', 'title', 'abstract', 'language', 'doi', 'authors', 'affiliations', 'journal', 'publisher', 'publication_date', 'volume', 'issue', 'start_page', 'end_page', 'topics', 'related_titles', 'created_at', 'modified_at', 'error', 'clean_abstract', 'abstract_lang', 'type']
+
+  MISSING / EMPTY VALUES
+  Column                      Missing
+  ─────────────────────────  ────────
+  doi                         100.0%
+  error                       100.0%
+  language                     67.3%
+  affiliations                 36.9%
+  modified_at                  32.4%
+  created_at                   32.2%
+  related_titles               17.1%
+  end_page                     14.2%
+  topics                        8.1%
+  issue                         6.3%
+  start_page                    5.4%
+  volume                        2.1%
+  journal                       1.2%
+  publication_date              1.0%
+  publisher                     0.7%
+  authors                       0.4%
+
+  ABSTRACT LENGTH  (clean_abstract)
+  n=200,000  mean=168w  median=163w  p10=61  p90=266
+  < 50 words  : 14,986  (7.5%)
+  < 20 words  : 5,663  (2.8%)  ← likely noise
+  > 300 words : 10,324  (5.2%)
+
+  PUBLICATION YEARS  (from publication_date)
+  range  : 1950 – 2024
+  top 5  : {2020.0: 6672, 2019.0: 6574, 2018.0: 6416, 2016.0: 6381, 2009.0: 6250}
+  no year: 1,925  (1.0%)
+
+  LANGUAGE  (abstract_lang)
+    en           200,000  (100.0%)
+
+  TOP 10 PUBLISHERS
+    Wiley                                            42,139
+    AIP Publishing                                    9,092
+    Oxford University Press (OUP)                     6,450
+    Springer Science and Business Media LLC           6,059
+    SAGE Publications                                 6,008
+    American Society for Microbiology                 4,354
+    Proceedings of the National Academy of Scienc     3,832
+    Ovid Technologies (Wolters Kluwer Health)         3,803
+    American Geophysical Union (AGU)                  3,296
+    Royal Society of Chemistry (RSC)                  3,192
+
+  TOP 10 JOURNALS
+    Japanese Journal of Applied Physics               4,271
+    Proceedings of the National Academy of Scienc     3,836
+    Applied Physics Letters                           2,876
+    Journal of Applied Physics                        2,508
+    The Journal of Chemical Physics                   2,146
+    Scientific Reports                                1,838
+    Science                                           1,771
+    Bulletin of the Chemical Society of Japan         1,710
+    Journal of the Physical Society of Japan          1,544
+    ＣＨＥＭＩＣＡＬ　＆　ＰＨＡＲＭＡＣＥＵＴＩＣＡＬ　ＢＵＬＬＥＴＩＮ                1,462
+
+  DUPLICATE TITLES  : 336  (0.17%)
+  DUPLICATE DOIS  : 0  (0.00%)
+
+==============================================================
+  DOCUMENT EXAMPLES
+==============================================================
+
+  ──────────────────────────────────────────────────────────
+  RANDOM EXAMPLES  (n=10)
+  ──────────────────────────────────────────────────────────
+  [1] ─────────────────────────────────────────────────
+  TITLE   : Neurophysiologic correlates of cross-language phonetic perception
+  ABSTRACT: This study examined neurophysiologic correlates of the perception of native and nonnative phonetic categories. Behavioral and electrophysiologic responses were obtained from Hindi and English listeners in response to a stimulus continuum of naturally produced, bilabial CV stimuli that differed in VOT from −90 to 0 ms. These speech sounds constitute phonemically relevant categories in Hindi but not…
+  [2] ─────────────────────────────────────────────────
+  TITLE   : Microtubules in Experimental Cataracts : Disappearance of Microtubules of Epithelial Cells and Lens Fibers in Colchicine-induced Cataracts
+  ABSTRACT: Colchicine(1〜2×10^ M), a microtubule inhibitor, was added to the organ cultures of rat crystalline lenses. 1. Wistar rats weighing 60-70 grams were used. Their crystalline lenses were cultured and the development of posterior subcortical cataracts became grossly evident in the 4-day-old culture. Corresponding to the posterior subcortical opacity which was macroscopically apparent, vacuole formatio…
+  [3] ─────────────────────────────────────────────────
+  TITLE   : Comprehensive whole-body counter surveys of Miharu-town school children for three consecutive years after the Fukushima NPP accident
+  ABSTRACT: Comprehensive whole-body counter surveys covering over 93% of the school children between the ages of 6 and 15 in Miharu town, Fukushima Prefecture, have been conducted for three consecutive years, in 2011, 2012 and 2013. Although the results of a questionnaire indicate that approximately 60% of the children have been regularly eating local or home-grown rice, in 2012 and 2013 no child was found t…
+  [4] ─────────────────────────────────────────────────
+  TITLE   : Success from Subsea Riserless Well Interventions
+  ABSTRACT: Abstract This paper describes how Statoil, over a period of 10 years, have qualified and implemented Subsea Riserless Light Well Intervention (RLWI) applications as their primary means of intervening in subsea wells. The paper will also demonstrate the value of RLWI in relation to the company's Increased Oil Recovery (IOR) goals. Subsea wells represent the area where least well intervention work h…
+  [5] ─────────────────────────────────────────────────
+  TITLE   : Design of a Linearly Polarized Radial Line MSA Array with Stacked Circular Patch Elements
+  ABSTRACT: This paper presents design of a linearly polarized RL-MSAA. A stacked circular MSA is with different radii of upper and lower patches is introduced for the linearly polarized RL-MSAA. It is confirmed that radiation phase of the stacked MSA can be controlled by the radii of the circular patches in the range of around 180 degrees by simulation. A prototype RL-MSAA with three concentric rows of the s…
+  [6] ─────────────────────────────────────────────────
+  TITLE   : How do APIs evolve? A story of refactoring
+  ABSTRACT: Abstract Frameworks and libraries change their APIs. Migrating an application to the new API is tedious and disrupts the development process. Although some tools and ideas have been proposed to solve the evolution of APIs, most updates are done manually. To better understand the requirements for migration tools, we studied the API changes of four frameworks and one library. We discovered that the …
+  [7] ─────────────────────────────────────────────────
+  TITLE   : Statistical reconstruction applied to streak artifact reduction in X-ray computed tomography image of dento-alveolar region
+  ABSTRACT: Proceedings of the 24th International Congress and Exhibition, Geneva. Switzerland, June 23-26, 2010
+  ⚠ FLAGS : VERY SHORT (<20w)
+  [8] ─────────────────────────────────────────────────
+  TITLE   : Development and Assessment of a Nomogram to Propose the Initial Dosage Regimen of a Meropenem Infusion Based on Serum Creatinine and Age Using a Monte Carlo Simulation
+  ABSTRACT: A conventional nomogram, based on serum creatinine (sCr) and age, was developed in order to determine the correct initial dosage regimen for meropenem (MEPM) infusions in elderly patients with severe community-acquired pneumonia (CAP), using a target minimum inhibitory concentration (MIC) of 2 mg/L. A correlation between age and actual bodyweight (BW) in a development cohort of 44 males and 45 fem…
+  ⚠ FLAGS : NON-ASCII chars (6)
+  [9] ─────────────────────────────────────────────────
+  TITLE   : 塑性論に基づいたEnd Cap型の降伏関数について
+  ABSTRACT: The determination of yield functions is the first step for the derivation of the constitutive law of geo-materials. In thi: paper, a new yield function is proposed by incorporating a parameter k, which is related to the creation of new fracture surfaced uring failure of materials, into the modified Cam-Clay model based on the classical plasticity theory and the critical state concept in soil mecha…
+  [10] ─────────────────────────────────────────────────
+  TITLE   : Centromeric Aurora-B Activation Requires TD-60, Microtubules, and Substrate Priming Phosphorylation
+  ABSTRACT: The chromosome passenger complex (CPC) controls chromosome congression, kinetochore-microtubule attachments, and spindle checkpoint signaling during mitosis. Aurora-B kinase is the catalytic subunit of the CPC. To understand how a single kinase can regulate such diverse events, we have investigated the activation of Aurora-B and describe two distinct activation mechanisms. First, Aurora-B activati…
+
+  ──────────────────────────────────────────────────────────
+  SHORT ABSTRACT EXAMPLES  (<20 words, showing 5)
+  ──────────────────────────────────────────────────────────
+  [1] ─────────────────────────────────────────────────
+  TITLE   : SPF仔豚への Pasteurella multocida および Bordetella bronchiseptica鼻腔内接種試験
+  ABSTRACT: 壊死毒産生血清型D・P. multocida(Pm)接種豚の鼻粘膜は軽度な炎症反応を呈するが, 上皮細胞はよく保持され, ほぼ正常な組織像を示した。Pmは試験期間中鼻腔内から少量ずつ回収されたが, 鼻粘膜へのPmの付着は走査型電顕では認められなかった。一方, B. bronchiseptica(Bb)接種豚の鼻粘膜は顕著な慢性鼻炎像を呈した。上皮細胞は変性剥離し, 残存する変性した線毛上皮細胞は線毛をほとんど欠いていた。Bbの付着は残存上皮細胞や微絨毛付近に多数認められ, Bbは試験期間中鼻腔から多量に回収された。鼻甲介の萎縮および変形を特徴とする, いわゆる萎縮性鼻炎はBb接種豚でのみ認められた。
+  ⚠ FLAGS : VERY SHORT (<20w) | NON-ASCII chars (241)
+  [2] ─────────────────────────────────────────────────
+  TITLE   : 血縁鑑定におけるRを用いた肯定確率・尤度比算定
+  ABSTRACT: DNA鑑定は血縁関係の確認，身元の確認を目的に行われ，PCR, 電気泳動などの手法を用いて該当者の各座位のDNA型を検出する．さらに該当者のDNA型から肯定確率または尤度比を算定することにより血縁，身元の尤もらしさを評価することがあるが, これら肯定確率・尤度比の算定は鑑定内容によっては計算量が膨大であり，手計算では作業が煩雑になる．一方， 近年は計算機の個人使用が普及しており，各人がプログラムを記述することにより大規模な計算を行うことが可能となっている．本綜説では父子鑑定（父-子-母）, 父子鑑定（父-子），両親鑑定, 祖父鑑定, 同胞鑑定, 半同胞鑑定, 叔父鑑定における肯定確率および尤度比の算定をRを用いて記述した．また本綜説で提示しているプログラムは改変が可能で，鑑定への関与人数の増加など鑑定内容の拡張にも容易に対応できると考えられる．
+  ⚠ FLAGS : VERY SHORT (<20w) | NON-ASCII chars (346)
+  [3] ─────────────────────────────────────────────────
+  TITLE   : S状結腸軸捻転症における大腸ファイバースコープによる非観血的整復
+  ABSTRACT: S状結腸軸捻転症の非観血的整復を目的に,5症例に対し10回の広視野角大腸ファイバースコープ挿入を試みた.全例,拡張部において吸引を行った直後より,著しい症状の改善を認め、大変有用であった.広視野角大腸ファイバースコープは,本疾患の特徴的内視鏡像である,ねじれ狭窄部や拡張部腸管においても,充分観察可能であった. 挿入は,腹膜炎の所見が無ければ,積極的に実施すべきであるが,送気は最小限にとどめ,出血や粘膜壊死を認めれば,直ちに抜去すべきであろう.しかし,循環障害はあっても,これらの所見が無ければ,可能な限り吸引を行なうべきであろう.循環障害の所見が無い症例では,脾彎曲部まで挿入し,S状結腸を直線化する方法が,再発の面から考えてよいと思われる. このように,患者の状態にあわせて,挿入を考慮すれば,安全で確実な方法と思われる.
+  ⚠ FLAGS : VERY SHORT (<20w) | NON-ASCII chars (330)
+  [4] ─────────────────────────────────────────────────
+  TITLE   : 植物やコンポスト化したバイオマスの施用が土壌の物理的•水理的特性に及ぼす影響一圃場での評価
+  ABSTRACT: コンポスト,木くず,稲わらというバイオマス資材を圃場の土に混入したとき,これが土の三相分布,硬度,保水性や透水性に及ぼす影響を実験的に検討した。岩手大学内圃場(クロボク土)に見かけの体積比で, 10:1,10:2, 10:3となるように各資材をすき込んだ。混入して約1年後,全区画から各3個の試料を100ccサンプラーにて採取し,変水頭透水試験の後,吸引法,遠心法により水分特性曲線を求めた。また各成分の密度を用いて,試料の三相分布と乾燥密度を得た。一方,現地区画での土壌硬度を山中式硬度計により求めた。全般的に,バイオマス資材の混入により全区画で土壌硬度と乾燥密度は低下し,これは試料中の固相率減少によることが分かった。また土壌硬度と乾燥密度のデータ間にも良い相関関係が見られた。透水係数についても多くの場合,混入率の増加に応じて増大した。これも固相率の減少に起因するものと考えられる。同様の理由に…
+  ⚠ FLAGS : VERY SHORT (<20w) | NON-ASCII chars (417)
+  [5] ─────────────────────────────────────────────────
+  TITLE   : 神経根性腰痛 (仮称) の検討
+  ABSTRACT: 腰仙椎部の神経根ブロックにより消失する腰痛について検討した.神経根ブロックで消失する腰痛は, 神経根障害による下肢痛に合併している症例と下肢痛を合併していない腰痛単独の症例に大別された.下肢痛合併例では, 下肢痛の責任神経根をブロックすることにより下肢痛とともに腰痛も消失した. この腰痛と下肢痛は, すべての症例において同一側に存在し, 且つ症状誘発体位も同じであった.この事実は, 腰痛と下肢痛の起源が同一で, この腰痛は神経根障害により発生している可能性を示唆している.下肢痛を合併していない腰痛単独の症例では, 腰痛はすべて片側性で, その原因と考えられる高位の神経根ブロックを行うことにより消失した.この神経根ブロックで消失する腰痛の発生や伝達経路には, 髄節性の洞椎骨神経や神経根が関与していると考えられる.したがって, 腰仙椎部の単一神経根ブロックで消失する腰痛は神経根性腰痛として, …
+  ⚠ FLAGS : VERY SHORT (<20w) | NON-ASCII chars (399)
+
+  ──────────────────────────────────────────────────────────
+  JATS / XML TAG SURVIVORS
+  ──────────────────────────────────────────────────────────
+  none found ✅
+
+  ──────────────────────────────────────────────────────────
+  HIGH NON-ASCII EXAMPLES  (>10 non-ASCII chars, showing 5 of 23,945)
+  ──────────────────────────────────────────────────────────
+  [1] ─────────────────────────────────────────────────
+  TITLE   : High pressure range of the addition of HO to HO, NO, NO2, and CO. I. Saturated laser induced fluorescence measurements at 298 K
+  ABSTRACT: Saturated laser induced fluorescence is used for the sensitive detection of radicals in high pressure gases. The method and its application to a series of addition reactions of HO radicals in the high pressure regime are described. Experiments between 1 and 150 bar of the bath gas He allow for falloff extrapolations to the high pressure limit of the recombination reactions. Limiting rate constants…
+  ⚠ FLAGS : NON-ASCII chars (14)
+  [2] ─────────────────────────────────────────────────
+  TITLE   : Chronic passive cigarette smoke exposure augments bronchopulmonary C‐fibre inputs to nucleus tractus solitarii neurones and reflex output in young guinea‐pigs
+  ABSTRACT: Children chronically exposed to environmental tobacco smoke (passive cigarette smoke) have more wheeze, cough, bronchoconstriction, airway hyper‐reactivity and mucous secretion, which may result, in part, from stimulation of the vagal bronchopulmonary C‐fibre reflex. Environmental tobacco smoke increases the sensitivity of bronchopulmonary C‐fibre endings, but the physiological relevance of this s…
+  ⚠ FLAGS : NON-ASCII chars (12)
+  [3] ─────────────────────────────────────────────────
+  TITLE   : Synthesis and thermal characteristics of bisimides. I
+  ABSTRACT: Abstract Ten structurally different bisimide resins were prepared by reacting maleic anhydride/citraconic anhydride and benzophenone tetracarboxylic dianhydride with aromatic diamines and fused aromatic structures or heterocyclic groups. The amines included were 1,5‐diaminonaphthalene, 2,5‐bis( p ‐aminophenyl)1,3,4‐oxadiazole, 3,3‐bis( p ‐aminophenyl)phthalide, 9,9‐bis( p ‐aminophenyl)fluorene. an…
+  ⚠ FLAGS : NON-ASCII chars (17)
+  [4] ─────────────────────────────────────────────────
+  TITLE   : Birth prevalence and survival of exomphalos in england and wales: 2005 to 2011
+  ABSTRACT: Background Exomphalos occurs in 2.2 per 10,000 births with 76% of these babies surviving to discharge. The aim of this study was to determine the birth prevalence and survival of babies with this anomaly in England and Wales. Methods Six BINOCAR regional congenital anomaly registers in England and Wales (covering 36% of births) between 2005 and 2011 provided cases for this study. Cases included li…
+  ⚠ FLAGS : NON-ASCII chars (12)
+  [5] ─────────────────────────────────────────────────
+  TITLE   : Thermodynamic Activities of “FeO” in some Ternary “FeO”‐Containing Slags
+  ABSTRACT: Thermodynamic data concerning “FeO”‐containing slags is of importance in ladle refining of steel. With a view to generate a set of reliable and self‐consistent thermodynamic data for these slags, experimental determination of the activities of iron oxide in the Al 2 O 3 ‐“FeO”‐SiO 2 , CaO‐“FeO”‐SiO 2 and “FeO”‐MgO‐SiO 2 systems was carried out using the gas equilibration method involving CO‐CO 2 ‐…
+  ⚠ FLAGS : NON-ASCII chars (28)
+
+==============================================================

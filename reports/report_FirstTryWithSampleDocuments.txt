@@ -1,0 +1,151 @@
+
+================================================================
+  OVERVIEW
+================================================================
+  Total classified   : 35,456
+  LCC main classes   : 5  (of 21 possible)
+  LCC subclasses     : 23
+  LCC divisions      : 102
+
+  Confidence (conf_div):
+    mean             : 0.923
+    median           : 0.998
+    std              : 0.150
+    conf < 0.50      : 1,121  (3.2%)
+    conf < 0.30      : 77  (0.2%)
+
+================================================================
+  LCC MAIN CLASS DISTRIBUTION
+================================================================
+  Cls   LCC Topic                                  Count       %  MeanConf
+  ────  ──────────────────────────────────────  ────────  ──────  ────────
+  T     Technology                                14,896   42.0%     0.919
+  Q     Science                                   14,575   41.1%     0.932
+  R     Medicine                                   5,184   14.6%     0.897
+  H     Social Sciences                              539    1.5%     1.000
+  L     Education                                    262    0.7%     1.000
+
+================================================================
+  TOP 20 LCC SUBCLASSES
+================================================================
+  Subclass         Count       %  MeanConf
+  ────────────  ────────  ──────  ────────
+  TN               6,098   17.2%     0.908
+  RC               4,566   12.9%     0.886
+  QC               4,285   12.1%     0.936
+  TK               3,969   11.2%     0.929
+  QD               3,381    9.5%     0.920
+  TJ               2,589    7.3%     0.924
+  QH               1,929    5.4%     0.912
+  TA               1,619    4.6%     0.922
+  QA               1,045    2.9%     0.899
+  QE               1,013    2.9%     0.925
+  QP                 730    2.1%     0.963
+  QB                 681    1.9%     0.944
+  TS                 621    1.8%     0.931
+  QL                 577    1.6%     1.000
+  QK                 500    1.4%     1.000
+  HD                 462    1.3%     1.000
+  QR                 434    1.2%     0.942
+  RK                 265    0.7%     0.955
+  RM                 265    0.7%     1.000
+  LB                 262    0.7%     1.000
+
+================================================================
+  TOP 20 LCC DIVISIONS
+================================================================
+  Division             Count       %  MeanConf
+  ────────────────  ────────  ──────  ────────
+  TN693                3,368    9.5%     0.924
+  TK7874               1,623    4.6%     0.939
+  QC809                1,263    3.6%     0.949
+  TK7872               1,126    3.2%     0.929
+  QC993                1,077    3.0%     0.948
+  RC660                  962    2.7%     0.888
+  QH506                  939    2.6%     0.931
+  RC685                  831    2.3%     0.943
+  QD476                  794    2.2%     0.943
+  TN706                  743    2.1%     0.914
+  QD415                  728    2.1%     0.916
+  TJ267                  708    2.0%     0.931
+  QD571                  687    1.9%     0.931
+  TA418                  634    1.8%     0.913
+  TN690                  623    1.8%     0.837
+  QL112                  577    1.6%     1.000
+  QE522                  568    1.6%     0.922
+  TN752                  561    1.6%     0.877
+  QK495                  500    1.4%     1.000
+  HD2741                 462    1.3%     1.000
+
+================================================================
+  TOP 15 TF-IDF TERMS PER MAIN CLASS  (source: clean_abstract)
+================================================================
+  (bigrams included; sampled up to 3,000 docs/class for speed)
+
+  [H] Social Sciences  (539 docs)
+    また, model, development, market, economic, social, studies, japan, しかし, policy, performance, findings, 一方, firms, theory
+
+  [L] Education  (262 docs)
+    social, self, language, model, health, learning, students, japanese, english, relationships, related, children, support, findings, studies
+
+  [Q] Science  (14,575 docs)
+    time, 10, observed, field, model, temperature, obtained, cells, surface, activity, acid, structure, cell, magnetic, region
+
+  [R] Medicine  (5,184 docs)
+    patients, cells, cell, treatment, increased, disease, associated, expression, levels, clinical, cancer, induced, protein, compared, activity
+
+  [T] Technology  (14,896 docs)
+    temperature, surface, obtained, flow, stress, phase, rate, observed, steel, investigated, al, time, model, process, alloys
+
+================================================================
+  3 SAMPLE TITLES PER MAIN CLASS  (Latin script only; HTML stripped)
+================================================================
+
+  [H] Social Sciences
+    • Relations Never Better
+    • Nature Management and Ecological Concerns in Strategy of Development of the Far Eastern Region of Russia
+    • Congress, the President, and the End of the Cold War
+
+  [L] Education
+    • Work Space Adjustability, Storage, And Enclosure As Predictors Of Employee Reactions And Performance
+    • The Career Anchor Instrument:A Tool for Comparing Japanese and Canadian Career Orientations
+    • Comparative Effects of Computer-Based Concept Maps, Refutational Texts, and Expository Texts on Science Learning
+
+  [Q] Science
+    • Photoelectrochemical operation of a surface-bound, nickel-phosphine H2 evolution catalyst on p-Si(111): a molecular semi
+    • New Multiplicative Knapsack-Type Public Key Cryptosystems
+    • Crustal movements around the Beppu Bay area, East-Central Kyushu, Japan, observed by GPS 1996-1998
+
+  [R] Medicine
+    • Inclusion Bodies Are a Site of Ebolavirus Replication
+    • Measles in monkeys: an epidemiological study
+    • Electrochemical Device with Interdigitated Ring Array Electrodes for Investigating the Relationship between Cardiomyocyt
+
+  [T] Technology
+    • Optimal Resource Allocation in Integrated Steelmaking with Biomass as Auxiliary Reductant in the Blast Furnace
+    • Wiener Model Identification of Blast Furnace Ironmaking Process
+    • Convergence Analysis of Quantizing Method with Correlated Gaussian Data
+
+================================================================
+  LOW-CONFIDENCE EXAMPLES  (conf < 0.30, up to 10 shown)
+================================================================
+  conf=0.287  [R→RC→RC643]
+    Selection of a Variant Lymphoma Cell Deficient in Adenylate Cyclase
+  conf=0.268  [R→RC→RC648]
+    Social stress in mice induces voiding dysfunction and bladder wall remodeling
+  conf=0.294  [R→RC→RC372]
+    Towards a Biomechanically-Based Diagnosis for Glaucoma: In Vivo Deformation Mapping of the Human Optic Nerve Head
+  conf=0.266  [R→RC→RC262]
+    Contribution of ATM and FOXE1 (TTF2) to risk of papillary thyroid carcinoma in Belarusian children exposed to radiation
+  conf=0.263  [R→RC→RC372]
+    Amyotrophic Lateral Sclerosis in South-East England: A Population-Based Study
+  conf=0.220  [R→RC→RC924]
+    Haploview: Visualization and Analysis of SNP Genotype Data
+  conf=0.254  [Q→QD→QD476]
+    Understanding the growth mechanism of CuI crystals during gel growth experiments
+  conf=0.280  [R→RC→RC648]
+    Mechanisms of continence and surgical cure in female and male SUI: Surgical research initiatives
+  conf=0.272  [R→RC→RC271]
+    Thiopental‐Induced Neutropenia in Two Patients with Severe Head Trauma
+  conf=0.283  [Q→QC→QC975]
+    Regulation of atmospheric CO2 by deep‐sea sediments in an Earth system model
