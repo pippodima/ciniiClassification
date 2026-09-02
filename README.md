@@ -48,6 +48,17 @@ Engineering properties that make this survivable at scale:
 - **Streaming throughout** — the 20 GB parsed corpus is never loaded into RAM; parsing,
   cleaning and reporting all iterate in batches (~2 GB peak vs. ~40 GB naive).
 
+### What the corpus looks like
+
+![UMAP of the corpus coloured by LCC main class](reports/thesis_figures/fig2_umap_main.png)
+
+The 166 density-based clusters resolve into coherent LCC regions without ever being told
+the taxonomy: Technology on the left, Medicine upper-right, the Science classes spanning
+the middle, and a compact humanities/social-science group at the bottom. Colour here comes
+from the manual cluster→LCC mapping, so this shows that the mapping is *consistent with*
+the embedding geometry — it is a sanity check on the labelling, not independent validation.
+Only clustered documents are plotted; the ~50% HDBSCAN outliers are not shown.
+
 ---
 
 ## Method
@@ -136,12 +147,23 @@ pipeline/     numbered stages 01–17 + orchestrators
               run_server.py     crash-safe full server run
               run_reembed.py    sharded 3M+ embedding, resumable
               run_training.py   sample→cluster→[manual map]→train
+clustering/   clustering experiments (grid search, coverage/quality trade-off)
 figures/      publication figure generators (data-driven + schematic)
 search/       Meilisearch indexer + faceted web explorer
-models/       released classifier artefacts
+models/release/            shipped model — model_b.pt, encoders.pkl,
+                           hierarchy.pkl, centroids.npz, metrics.json
+training_runs/v3_300k/     provenance — LCC mapping, HDBSCAN tuning grid,
+                           cluster metadata (data parquets not tracked)
+reports/                   evaluation evidence: leakage diagnostics,
+                           journal-gold scoring, thesis figures
 docs/         architecture diagram
-lcc_mapping_corrected.csv   the reviewed 166-cluster → LCC mapping
+lcc_mapping_corrected.csv  the reviewed 166-cluster → LCC mapping
 ```
+
+Every number in this README is reproducible from `reports/`:
+`eval_v3_300k/diagnostics.txt` for the leakage analysis and internal metrics,
+`journal_validation_v3_300k/score_{TK,BUCKET}/gold_score.txt` for the external
+accuracy and trust tiers.
 
 ## Reproducing
 
