@@ -115,6 +115,14 @@ Paper-level prediction is then scored against its journal's independent label.
 | Strict (single correct code) | **0.781** | 0.616 |
 | Plausibility bucket (adjacent codes accepted) | **0.934** | 0.786 |
 
+![Main-class confusion against the journal gold standard](reports/thesis_figures/fig_confusion_main.png)
+
+Rows are the journal's independent gold class, cells are P(predicted | gold), so the
+diagonal is correct. Two rows are daggered because the model has **no in-vocabulary
+subclass** for them — S Agriculture and V Naval Science cannot be predicted correctly at
+all, and Agriculture splits cleanly between Science and Medicine as a result. Excluding
+those structurally-impossible rows, in-vocabulary recall is 0.79.
+
 Residual disagreement is overwhelmingly *adjacent-category* — physiology↔medicine,
 materials↔chemistry↔electronics, applied-physics QC↔TK — rather than outright error. A
 measured 4.4% of gold papers are unwinnable: their correct subclass is absent from the
